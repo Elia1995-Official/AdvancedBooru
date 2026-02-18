@@ -648,21 +648,6 @@ public class BooruApiService
             || baseUrl.Contains("tab.booru.org", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string FixThumbsSubdomainUrl(string url)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            return url;
-        }
-
-        if (url.Contains("://thumbs.", StringComparison.OrdinalIgnoreCase))
-        {
-            return url.Replace("://thumbs.", "://img.", StringComparison.OrdinalIgnoreCase);
-        }
-
-        return url;
-    }
-
     private static bool ShouldUseGelbooruHtmlFallback(string baseUrl, HttpStatusCode? statusCode)
     {
         if (!IsGelbooruBaseUrl(baseUrl))
@@ -921,9 +906,26 @@ public class BooruApiService
             "<meta\\s+property=\"og:image\"\\s+content=\"(?<url>[^\"]+)\"",
             RegexOptions.IgnoreCase);
 
-        var fullRaw = originalMatch.Success
-            ? originalMatch.Groups["url"].Value
-            : imageMatch.Groups["url"].Value;
+        var fullRaw = string.Empty;
+
+        if (IsThumbsSubdomainSite(baseUrl))
+        {
+            var imgBooruMatch = Regex.Match(
+                html,
+                "https://img\\.booru\\.org/[^/]+//images/[^/]+/[^.\"']+\\.(jpg|jpeg|png|gif|webp)",
+                RegexOptions.IgnoreCase);
+            if (imgBooruMatch.Success)
+            {
+                fullRaw = imgBooruMatch.Value;
+            }
+        }
+
+        if (string.IsNullOrEmpty(fullRaw))
+        {
+            fullRaw = originalMatch.Success
+                ? originalMatch.Groups["url"].Value
+                : imageMatch.Groups["url"].Value;
+        }
 
         var previewRaw = previewMetaMatch.Success
             ? previewMetaMatch.Groups["url"].Value
@@ -931,15 +933,6 @@ public class BooruApiService
 
         var full = MakeAbsoluteGelbooruLikeUrl(baseUrl, WebUtility.HtmlDecode(fullRaw));
         var preview = MakeAbsoluteGelbooruLikeUrl(baseUrl, WebUtility.HtmlDecode(previewRaw));
-
-        if (IsThumbsSubdomainSite(baseUrl) && !string.IsNullOrWhiteSpace(full))
-        {
-            full = FixThumbsSubdomainUrl(full);
-            if (!string.IsNullOrWhiteSpace(preview) && preview.Contains("thumbs.", StringComparison.OrdinalIgnoreCase))
-            {
-                preview = FixThumbsSubdomainUrl(preview);
-            }
-        }
 
         if (string.IsNullOrWhiteSpace(full))
         {
