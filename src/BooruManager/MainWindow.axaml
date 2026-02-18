@@ -11,13 +11,14 @@
   <Window.Resources>
     <converters:BoolToDoubleConverter x:Key="BoolToDoubleConverter"/>
     <DataTemplate x:Key="PostCardTemplate">
-      <Border Classes="postCard"
+      <Border Classes.postCard="{Binding IsSelected}"
               Margin="12"
               Width="340"
               Height="400"
               Background="#0D1730"
               CornerRadius="14"
               DoubleTapped="PostCard_OnDoubleTapped"
+              Tapped="PostCard_OnTapped"
               Opacity="{Binding IsLoaded, Converter={StaticResource BoolToDoubleConverter}, ConverterParameter=1:0}">
         <Border.ContextMenu>
           <ContextMenu Opened="PostContextMenu_OnOpened">
@@ -99,6 +100,11 @@
 
     <Style Selector="Border.postCard:pointerover">
       <Setter Property="Opacity" Value="0.9"/>
+    </Style>
+
+    <Style Selector="Border.postCard.selected">
+      <Setter Property="BorderBrush" Value="#FFD700"/>
+      <Setter Property="BorderThickness" Value="3"/>
     </Style>
   </Window.Styles>
 

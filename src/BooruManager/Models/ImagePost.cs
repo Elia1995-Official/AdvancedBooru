@@ -13,6 +13,7 @@ public class ImagePost : INotifyPropertyChanged
     private IImage? _previewImage;
     private bool _isFavorite;
     private bool _isLoaded;
+    private bool _isSelected;
     private int _width;
     private int _height;
 
@@ -104,6 +105,21 @@ public class ImagePost : INotifyPropertyChanged
             }
 
             _isLoaded = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value)
+            {
+                return;
+            }
+
+            _isSelected = value;
             OnPropertyChanged();
         }
     }

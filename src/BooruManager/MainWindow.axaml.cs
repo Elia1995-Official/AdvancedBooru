@@ -77,6 +77,56 @@ public partial class MainWindow : Window
         await OpenPostAsync(post);
     }
 
+    private void PostCard_OnTapped(object? sender, TappedEventArgs e)
+    {
+        if (!TryGetPostFromSender(sender, out var post))
+        {
+            return;
+        }
+
+        var keyModifiers = e.KeyModifiers;
+        if (keyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            post.IsSelected = !post.IsSelected;
+        }
+        else
+        {
+            ClearAllSelections();
+            post.IsSelected = true;
+        }
+    }
+
+    private void ClearAllSelections()
+    {
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        foreach (var image in vm.Images)
+        {
+            image.IsSelected = false;
+        }
+
+        foreach (var image in vm.FavoriteImages)
+        {
+            image.IsSelected = false;
+        }
+    }
+
+    private IReadOnlyList<ImagePost> GetSelectedPosts()
+    {
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return Array.Empty<ImagePost>();
+        }
+
+        var selected = new List<ImagePost>();
+        selected.AddRange(vm.Images.Where(p => p.IsSelected));
+        selected.AddRange(vm.FavoriteImages.Where(p => p.IsSelected));
+        return selected;
+    }
+
     private async void FavoriteButton_OnClick(object? sender, RoutedEventArgs e)
     {
         if (!TryGetPostFromSender(sender, out var post))
@@ -124,20 +174,36 @@ public partial class MainWindow : Window
 
     private async void ContextView_OnClick(object? sender, RoutedEventArgs e)
     {
-        if (!TryGetPostFromSender(sender, out var post))
+        var selectedPosts = GetSelectedPosts();
+        if (selectedPosts.Count == 0)
         {
-            return;
+            if (!TryGetPostFromSender(sender, out var post))
+            {
+                return;
+            }
+
+            selectedPosts = new List<ImagePost> { post };
         }
 
-        await OpenPostAsync(post);
+        foreach (var post in selectedPosts)
+        {
+            await OpenPostAsync(post);
+        }
+
         e.Handled = true;
     }
 
     private async void ContextToggleFavorite_OnClick(object? sender, RoutedEventArgs e)
     {
-        if (!TryGetPostFromSender(sender, out var post))
+        var selectedPosts = GetSelectedPosts();
+        if (selectedPosts.Count == 0)
         {
-            return;
+            if (!TryGetPostFromSender(sender, out var post))
+            {
+                return;
+            }
+
+            selectedPosts = new List<ImagePost> { post };
         }
 
         if (DataContext is not MainWindowViewModel vm)
@@ -145,15 +211,25 @@ public partial class MainWindow : Window
             return;
         }
 
-        await vm.ToggleFavoriteAsync(post);
+        foreach (var post in selectedPosts)
+        {
+            await vm.ToggleFavoriteAsync(post);
+        }
+
         e.Handled = true;
     }
 
     private async void ContextViewTags_OnClick(object? sender, RoutedEventArgs e)
     {
-        if (!TryGetPostFromSender(sender, out var post))
+        var selectedPosts = GetSelectedPosts();
+        if (selectedPosts.Count == 0)
         {
-            return;
+            if (!TryGetPostFromSender(sender, out var post))
+            {
+                return;
+            }
+
+            selectedPosts = new List<ImagePost> { post };
         }
 
         if (DataContext is not MainWindowViewModel vm)
@@ -161,13 +237,23 @@ public partial class MainWindow : Window
             return;
         }
 
-        await vm.EnsurePostTagsResolvedAsync(post);
+        List<string> allSelectedTags = new();
 
-        var selector = new TagSelectorWindow(post);
-        var selectedTags = await selector.ShowDialog<IReadOnlyList<string>?>(this);
-        if (selectedTags is { Count: > 0 })
+        foreach (var post in selectedPosts)
         {
-            vm.SearchText = string.Join(' ', selectedTags);
+            await vm.EnsurePostTagsResolvedAsync(post);
+
+            var selector = new TagSelectorWindow(post);
+            var selectedTags = await selector.ShowDialog<IReadOnlyList<string>?>(this);
+            if (selectedTags is { Count: > 0 })
+            {
+                allSelectedTags.AddRange(selectedTags);
+            }
+        }
+
+        if (allSelectedTags.Count > 0)
+        {
+            vm.SearchText = string.Join(' ', allSelectedTags.Distinct());
             vm.SearchCommand.Execute(null);
         }
 
@@ -176,37 +262,60 @@ public partial class MainWindow : Window
 
     private async void ContextCopyPostUrl_OnClick(object? sender, RoutedEventArgs e)
     {
-        if (!TryGetPostFromSender(sender, out var post))
+        var selectedPosts = GetSelectedPosts();
+        if (selectedPosts.Count == 0)
         {
-            return;
+            if (!TryGetPostFromSender(sender, out var post))
+            {
+                return;
+            }
+
+            selectedPosts = new List<ImagePost> { post };
         }
 
-        await CopyToClipboardAsync(post.PostUrl);
+        var urls = string.Join(Environment.NewLine, selectedPosts.Select(p => p.PostUrl));
+        await CopyToClipboardAsync(urls);
         e.Handled = true;
     }
 
     private async void ContextCopyMediaUrl_OnClick(object? sender, RoutedEventArgs e)
     {
-        if (!TryGetPostFromSender(sender, out var post))
+        var selectedPosts = GetSelectedPosts();
+        if (selectedPosts.Count == 0)
         {
-            return;
+            if (!TryGetPostFromSender(sender, out var post))
+            {
+                return;
+            }
+
+            selectedPosts = new List<ImagePost> { post };
         }
 
-        var mediaUrl = !string.IsNullOrWhiteSpace(post.FullImageUrl)
-            ? post.FullImageUrl
-            : post.PreviewUrl;
-        await CopyToClipboardAsync(mediaUrl);
+        var urls = string.Join(Environment.NewLine, selectedPosts.Select(p =>
+            !string.IsNullOrWhiteSpace(p.FullImageUrl) ? p.FullImageUrl : p.PreviewUrl));
+        await CopyToClipboardAsync(urls);
         e.Handled = true;
     }
 
     private async void ContextCopyTags_OnClick(object? sender, RoutedEventArgs e)
     {
-        if (!TryGetPostFromSender(sender, out var post))
+        var selectedPosts = GetSelectedPosts();
+        if (selectedPosts.Count == 0)
         {
-            return;
+            if (!TryGetPostFromSender(sender, out var post))
+            {
+                return;
+            }
+
+            selectedPosts = new List<ImagePost> { post };
         }
 
-        await CopyToClipboardAsync(post.Tags);
+        var allTags = selectedPosts
+            .SelectMany(p => p.Tags?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>())
+            .Distinct()
+            .OrderBy(t => t);
+        var tagsString = string.Join(' ', allTags);
+        await CopyToClipboardAsync(tagsString);
         e.Handled = true;
     }
 
