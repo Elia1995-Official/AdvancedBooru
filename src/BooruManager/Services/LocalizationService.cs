@@ -10,7 +10,7 @@ public class LocalizationService
     private static LocalizationService? _instance;
     public static LocalizationService Instance => _instance ??= new LocalizationService();
 
-    private string _currentLanguage;
+    private string _currentLanguage = "en";
     private readonly Dictionary<string, Dictionary<string, string>> _translations;
 
     public event Action? LanguageChanged;
@@ -20,7 +20,12 @@ public class LocalizationService
         get => _currentLanguage;
         set
         {
-            if (_currentLanguage != value && _translations.ContainsKey(value))
+            if (string.IsNullOrEmpty(value))
+            {
+                return;
+            }
+
+            if (_currentLanguage != value && _translations != null && _translations.ContainsKey(value))
             {
                 _currentLanguage = value;
                 LanguageChanged?.Invoke();
