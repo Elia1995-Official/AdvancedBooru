@@ -117,7 +117,8 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private string _statusText = "Ready";
     private int _nextPage = 1;
     private bool _hasMorePages = true;
-    private int _maxPages = 10;
+    private int _maxPages = int.MaxValue;
+    private bool _isInitialLoad = true;
     private long _previewQueueSequence;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -723,6 +724,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             _ = LoadPreviewsAsync(FavoriteImages.Where(x => x.PreviewImage is null).ToList(), CancellationToken.None);
         }
 
+        _isInitialLoad = true;
         _hasStartedSearch = true;
         await RefreshAsync();
     }
@@ -1018,7 +1020,8 @@ public class MainWindowViewModel : INotifyPropertyChanged
         Images.Clear();
         _nextPage = 1;
         _hasMorePages = true;
-        _maxPages = 10;
+        _maxPages = _isInitialLoad ? 10 : int.MaxValue;
+        _isInitialLoad = false;
 
         await LoadAllPagesAsync(_searchCts.Token);
     }
