@@ -18,6 +18,8 @@ namespace BooruManager.Services;
 public class BooruApiService
 {
     private const int GelbooruHtmlPostsPerPageEstimate = 28;
+    private const string BrowserLikeUserAgent =
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 BooruManager/1.0";
 
     private readonly HttpClient _httpClient = new();
 
@@ -254,9 +256,16 @@ public class BooruApiService
         string xmlString;
         try
         {
-            xmlString = await _httpClient.GetStringAsync(urlBuilder.ToString(), cancellationToken);
+            xmlString = await GetStringWithSiteHeadersAsync(
+                urlBuilder.ToString(),
+                RequiresBrowserLikeUserAgent(baseUrl),
+                cancellationToken);
         }
         catch (HttpRequestException ex) when (ShouldUseGelbooruHtmlFallback(baseUrl, ex.StatusCode))
+        {
+            return await GetGelbooruPostByIdFromHtmlAsync(baseUrl, sourceName, postId, cancellationToken);
+        }
+        catch (HttpRequestException) when (IsGelbooruBaseUrl(baseUrl))
         {
             return await GetGelbooruPostByIdFromHtmlAsync(baseUrl, sourceName, postId, cancellationToken);
         }
@@ -519,9 +528,16 @@ public class BooruApiService
         string xmlString;
         try
         {
-            xmlString = await _httpClient.GetStringAsync(urlBuilder.ToString(), cancellationToken);
+            xmlString = await GetStringWithSiteHeadersAsync(
+                urlBuilder.ToString(),
+                RequiresBrowserLikeUserAgent(baseUrl),
+                cancellationToken);
         }
         catch (HttpRequestException ex) when (ShouldUseGelbooruHtmlFallback(baseUrl, ex.StatusCode))
+        {
+            return await SearchGelbooruHtmlFallbackAsync(baseUrl, sourceName, tags, page, pageSize, cancellationToken);
+        }
+        catch (HttpRequestException) when (IsGelbooruBaseUrl(baseUrl))
         {
             return await SearchGelbooruHtmlFallbackAsync(baseUrl, sourceName, tags, page, pageSize, cancellationToken);
         }
@@ -557,24 +573,24 @@ public class BooruApiService
                 ?? post.Attribute("sample_url")?.Value
                 ?? post.Attribute("file_url")?.Value
                 ?? string.Empty;
-            var fullRaw = post.Attribute("file_url")?.Value
-                ?? post.Attribute("sample_url")?.Value
+            var fullRaw = post.Attribute("sample_url")?.Value
+                ?? post.Attribute("file_url")?.Value
                 ?? previewRaw;
             var rating = post.Attribute("rating")?.Value ?? string.Empty;
             var tagsText = post.Attribute("tags")?.Value ?? string.Empty;
             var score = ParseInt(post.Attribute("score")?.Value);
             var createdAtUnix = ParseUnixTime(post.Attribute("created_at")?.Value);
             var tagGroups = BuildSingleTagGroup(tagsText);
-            var width = ParsePositiveInt(post.Attribute("width")?.Value);
+            var width = ParsePositiveInt(post.Attribute("sample_width")?.Value);
             if (width <= 0)
             {
-                width = ParsePositiveInt(post.Attribute("sample_width")?.Value);
+                width = ParsePositiveInt(post.Attribute("width")?.Value);
             }
 
-            var height = ParsePositiveInt(post.Attribute("height")?.Value);
+            var height = ParsePositiveInt(post.Attribute("sample_height")?.Value);
             if (height <= 0)
             {
-                height = ParsePositiveInt(post.Attribute("sample_height")?.Value);
+                height = ParsePositiveInt(post.Attribute("height")?.Value);
             }
 
             var preview = MakeAbsoluteGelbooruLikeUrl(baseUrl, previewRaw);
@@ -613,11 +629,18 @@ public class BooruApiService
 
     private static bool ShouldUseGelbooruHtmlFallback(string baseUrl, HttpStatusCode? statusCode)
     {
-        return IsGelbooruBaseUrl(baseUrl)
-            && (statusCode == HttpStatusCode.Unauthorized
-                || statusCode == HttpStatusCode.Forbidden
-                || statusCode == HttpStatusCode.BadGateway
-                || statusCode == HttpStatusCode.ServiceUnavailable);
+        if (!IsGelbooruBaseUrl(baseUrl))
+        {
+            return false;
+        }
+
+        if (!statusCode.HasValue)
+        {
+            return true;
+        }
+
+        var code = (int)statusCode.Value;
+        return code is 401 or 403 or 429 or 500 or 502 or 503 or 504 or 520 or 521 or 522 or 523 or 524 or 525 or 526;
     }
 
     private async Task<IReadOnlyList<ImagePost>> SearchGelbooruHtmlFallbackAsync(
@@ -630,6 +653,7 @@ public class BooruApiService
     {
         var posts = new List<ImagePost>();
         var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var useBrowserLikeUserAgent = RequiresBrowserLikeUserAgent(baseUrl);
 
         var pagesPerRequest = Math.Max(1, (int)Math.Ceiling(pageSize / (double)GelbooruHtmlPostsPerPageEstimate));
         var startPid = Math.Max(0, (page - 1) * pagesPerRequest);
@@ -643,7 +667,20 @@ public class BooruApiService
                 listUrlBuilder.Append("&tags=").Append(Uri.EscapeDataString(tags.Trim()));
             }
 
-            var html = await _httpClient.GetStringAsync(listUrlBuilder.ToString(), cancellationToken);
+            string html;
+            try
+            {
+                html = await GetStringWithSiteHeadersAsync(listUrlBuilder.ToString(), useBrowserLikeUserAgent, cancellationToken);
+            }
+            catch (HttpRequestException ex) when (ShouldUseGelbooruHtmlFallback(baseUrl, ex.StatusCode))
+            {
+                break;
+            }
+            catch (HttpRequestException) when (IsGelbooruBaseUrl(baseUrl))
+            {
+                break;
+            }
+
             if (string.IsNullOrWhiteSpace(html))
             {
                 break;
@@ -818,7 +855,16 @@ public class BooruApiService
         }
 
         var postUrl = $"{baseUrl}/index.php?page=post&s=view&id={Uri.EscapeDataString(id)}";
-        var html = await _httpClient.GetStringAsync(postUrl, cancellationToken);
+        string html;
+        try
+        {
+            html = await GetStringWithSiteHeadersAsync(postUrl, RequiresBrowserLikeUserAgent(baseUrl), cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+
         if (string.IsNullOrWhiteSpace(html))
         {
             return null;
@@ -1065,6 +1111,27 @@ public class BooruApiService
             "e" or "explicit" or "adult" => allowAdult,
             _ => true
         };
+    }
+
+    private static bool RequiresBrowserLikeUserAgent(string baseUrl)
+    {
+        return baseUrl.Contains(".booru.org", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<string> GetStringWithSiteHeadersAsync(string url, bool useBrowserLikeUserAgent, CancellationToken cancellationToken)
+    {
+        if (!useBrowserLikeUserAgent)
+        {
+            return await _httpClient.GetStringAsync(url, cancellationToken);
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.UserAgent.ParseAdd(BrowserLikeUserAgent);
+        request.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(cancellationToken);
     }
 
     private static string MakeAbsoluteDanbooruUrl(string url)
