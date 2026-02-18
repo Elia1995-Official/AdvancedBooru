@@ -51,7 +51,7 @@ public class BooruApiService
         };
 
         return results
-            .Where(p => MatchesRating(p.Rating, allowSafe, allowQuestionable, allowAdult))
+            .Where(p => site == BooruSite.Safebooru || MatchesRating(p.Rating, allowSafe, allowQuestionable, allowAdult))
             .ToList();
     }
 

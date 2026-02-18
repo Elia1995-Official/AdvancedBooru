@@ -184,6 +184,13 @@ public class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(ShowRatingFilters));
             OnPropertyChanged(nameof(SecretLabel));
 
+            if (value == BooruSite.Safebooru)
+            {
+                IncludeSafe = true;
+                IncludeQuestionable = true;
+                IncludeAdult = true;
+            }
+
             ApplyCredentialsForSelectedSite();
             if (_hasStartedSearch)
             {
