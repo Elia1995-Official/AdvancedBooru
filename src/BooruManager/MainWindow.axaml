@@ -114,7 +114,12 @@
                     HorizontalScrollBarVisibility="Disabled">
       <StackPanel Spacing="8" Margin="0,0,4,0">
 
-        <Expander IsExpanded="True" Header="{Binding LocSearch}">
+        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
+          <Button Content="+" Command="{Binding ExpandAllCommand}" Padding="8,4" ToolTip.Tip="Expand all"/>
+          <Button Content="-" Command="{Binding CollapseAllCommand}" Padding="8,4" ToolTip.Tip="Collapse all"/>
+        </StackPanel>
+
+        <Expander IsExpanded="{Binding SearchExpanded}" Header="{Binding LocSearch}">
           <StackPanel Spacing="6" Margin="0,8,0,0">
             <TextBlock Text="{Binding LocBooru}" FontSize="12" Foreground="#8FB0CF"/>
             <ComboBox ItemsSource="{Binding Sites}" SelectedItem="{Binding SelectedSite}"/>
@@ -132,7 +137,7 @@
           </StackPanel>
         </Expander>
 
-        <Expander IsExpanded="True" Header="{Binding LocResults}">
+        <Expander IsExpanded="{Binding ResultsExpanded}" Header="{Binding LocResults}">
           <StackPanel Spacing="6" Margin="0,8,0,0">
             <Grid ColumnDefinitions="*,*">
               <StackPanel Grid.Column="0" Spacing="2">

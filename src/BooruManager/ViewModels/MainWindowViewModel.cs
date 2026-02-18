@@ -182,6 +182,60 @@ public class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    private bool _searchExpanded = true;
+    private bool _resultsExpanded;
+    private bool _filtersExpanded;
+    private bool _accountExpanded;
+    private bool _settingsExpanded;
+
+    public bool SearchExpanded
+    {
+        get => _searchExpanded;
+        set { _searchExpanded = value; OnPropertyChanged(); }
+    }
+
+    public bool ResultsExpanded
+    {
+        get => _resultsExpanded;
+        set { _resultsExpanded = value; OnPropertyChanged(); }
+    }
+
+    public bool FiltersExpanded
+    {
+        get => _filtersExpanded;
+        set { _filtersExpanded = value; OnPropertyChanged(); }
+    }
+
+    public bool AccountExpanded
+    {
+        get => _accountExpanded;
+        set { _accountExpanded = value; OnPropertyChanged(); }
+    }
+
+    public bool SettingsExpanded
+    {
+        get => _settingsExpanded;
+        set { _settingsExpanded = value; OnPropertyChanged(); }
+    }
+
+    public void ExpandAll()
+    {
+        SearchExpanded = true;
+        ResultsExpanded = true;
+        FiltersExpanded = true;
+        AccountExpanded = true;
+        SettingsExpanded = true;
+    }
+
+    public void CollapseAll()
+    {
+        SearchExpanded = false;
+        ResultsExpanded = false;
+        FiltersExpanded = false;
+        AccountExpanded = false;
+        SettingsExpanded = false;
+    }
+
     public string SearchText
     {
         get => _searchText;
@@ -577,6 +631,8 @@ public class MainWindowViewModel : INotifyPropertyChanged
     public ICommand ResetLocalFiltersCommand { get; }
     public ICommand ShuffleVisibleCommand { get; }
     public ICommand ExportVisibleCommand { get; }
+    public ICommand ExpandAllCommand { get; }
+    public ICommand CollapseAllCommand { get; }
 
     public MainWindowViewModel()
     {
@@ -587,6 +643,8 @@ public class MainWindowViewModel : INotifyPropertyChanged
         ResetLocalFiltersCommand = new AsyncRelayCommand(ResetLocalFiltersAsync);
         ShuffleVisibleCommand = new AsyncRelayCommand(ShuffleVisibleAsync);
         ExportVisibleCommand = new AsyncRelayCommand(ExportVisibleAsync);
+        ExpandAllCommand = new RelayCommand(_ => ExpandAll());
+        CollapseAllCommand = new RelayCommand(_ => CollapseAll());
 
         StartPreviewWorkers();
         _ = InitializeAsync();
@@ -2067,5 +2125,25 @@ public class AsyncRelayCommand : ICommand
     public async void Execute(object? parameter)
     {
         await _execute();
+    }
+}
+
+public class RelayCommand : ICommand
+{
+    private readonly Action<object?> _execute;
+
+    public RelayCommand(Action<object?> execute)
+    {
+        _execute = execute;
+    }
+
+    public bool CanExecute(object? parameter) => true;
+#pragma warning disable CS0067
+    public event EventHandler? CanExecuteChanged;
+#pragma warning restore CS0067
+
+    public void Execute(object? parameter)
+    {
+        _execute(parameter);
     }
 }

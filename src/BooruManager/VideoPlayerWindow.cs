@@ -25,6 +25,8 @@ public class VideoPlayerWindow : Window
     private readonly Slider _timelineSlider;
     private readonly TextBlock _currentTimeText;
     private readonly TextBlock _durationText;
+    private readonly Slider _volumeSlider;
+    private readonly Button _muteButton;
 
     private CancellationTokenSource? _playbackCts;
     private Task? _playbackTask;
@@ -34,6 +36,8 @@ public class VideoPlayerWindow : Window
     private bool _isLoaded;
     private bool _isScrubbing;
     private bool _isInternalSliderUpdate;
+    private bool _isMuted;
+    private double _volume = 1.0;
 
     private VideoMetadata? _metadata;
 
@@ -65,6 +69,24 @@ public class VideoPlayerWindow : Window
         };
         _playPauseButton.Click += PlayPauseButtonOnClick;
 
+        _muteButton = new Button
+        {
+            Content = "🔊",
+            Width = 40,
+            IsEnabled = false
+        };
+        _muteButton.Click += MuteButtonOnClick;
+
+        _volumeSlider = new Slider
+        {
+            Minimum = 0,
+            Maximum = 1,
+            Value = 1,
+            Width = 80,
+            IsEnabled = false
+        };
+        _volumeSlider.ValueChanged += VolumeSliderOnValueChanged;
+
         _currentTimeText = new TextBlock
         {
             Text = "00:00",
@@ -90,14 +112,33 @@ public class VideoPlayerWindow : Window
         };
         _timelineSlider.ValueChanged += TimelineSliderOnValueChanged;
         _timelineSlider.PointerPressed += (_, _) => _isScrubbing = true;
-        _timelineSlider.PointerReleased += async (_, _) => await CommitSeekAsync();
+        _timelineSlider.PointerMoved += async (_, _) =>
+        {
+            if (_isScrubbing && _metadata != null)
+            {
+                await StartPlaybackFromAsync(_timelineSlider.Value);
+            }
+        };
+        _timelineSlider.PointerReleased += async (_, _) =>
+        {
+            _isScrubbing = false;
+            await StartPlaybackFromAsync(_timelineSlider.Value);
+        };
 
         var controls = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("Auto,*"),
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,*"),
             Margin = new Thickness(10)
         };
         controls.Children.Add(_playPauseButton);
+
+        var muteHost = new Border { Child = _muteButton, Margin = new Thickness(8, 0, 0, 0) };
+        Grid.SetColumn(muteHost, 1);
+        controls.Children.Add(muteHost);
+
+        var volumeHost = new Border { Child = _volumeSlider, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+        Grid.SetColumn(volumeHost, 2);
+        controls.Children.Add(volumeHost);
 
         var statusHost = new Border
         {
@@ -105,7 +146,7 @@ public class VideoPlayerWindow : Window
             Margin = new Thickness(10, 0, 0, 0),
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
         };
-        Grid.SetColumn(statusHost, 1);
+        Grid.SetColumn(statusHost, 3);
         controls.Children.Add(statusHost);
 
         var timelineGrid = new Grid
@@ -168,6 +209,23 @@ public class VideoPlayerWindow : Window
         _playPauseButton.Content = _isPaused ? "Play" : "Pause";
     }
 
+    private void MuteButtonOnClick(object? sender, EventArgs e)
+    {
+        _isMuted = !_isMuted;
+        _muteButton.Content = _isMuted ? "🔇" : "🔊";
+        _volumeSlider.Value = _isMuted ? 0 : _volume;
+    }
+
+    private void VolumeSliderOnValueChanged(object? sender, RangeBaseValueChangedEventArgs e)
+    {
+        _volume = e.NewValue;
+        if (_volume > 0)
+        {
+            _isMuted = false;
+            _muteButton.Content = "🔊";
+        }
+    }
+
     private async Task StartPlaybackAsync()
     {
         _metadata = await FfmpegVideoBackend.ProbeAsync(_videoUrl);
@@ -182,6 +240,8 @@ public class VideoPlayerWindow : Window
 
         _statusText.Text = $"{_metadata.Width}x{_metadata.Height} @ {_metadata.FrameRate:F2} fps";
         _playPauseButton.IsEnabled = true;
+        _volumeSlider.IsEnabled = true;
+        _muteButton.IsEnabled = true;
         _timelineSlider.IsEnabled = _metadata.DurationSeconds > 0;
         _timelineSlider.Maximum = Math.Max(1, _metadata.DurationSeconds);
         _durationText.Text = FormatTime(_metadata.DurationSeconds);
