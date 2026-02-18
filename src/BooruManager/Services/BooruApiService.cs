@@ -323,6 +323,12 @@ public class BooruApiService
         var preview = MakeAbsoluteGelbooruLikeUrl(baseUrl, previewRaw);
         var full = MakeAbsoluteGelbooruLikeUrl(baseUrl, fullRaw);
 
+        if (IsThumbsSubdomainSite(baseUrl))
+        {
+            full = FixThumbsSubdomainUrl(full);
+            preview = FixThumbsSubdomainUrl(preview);
+        }
+
         if (string.IsNullOrWhiteSpace(preview) || string.IsNullOrWhiteSpace(full))
         {
             return IsGelbooruBaseUrl(baseUrl)
