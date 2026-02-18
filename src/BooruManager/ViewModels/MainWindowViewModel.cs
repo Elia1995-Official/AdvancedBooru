@@ -181,6 +181,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             _selectedSite = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(UsesApiKey));
+            OnPropertyChanged(nameof(ShowRatingFilters));
             OnPropertyChanged(nameof(SecretLabel));
 
             ApplyCredentialsForSelectedSite();
@@ -506,6 +507,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
     public string FavoritesTabTitle => $"Favorites ({FavoriteImages.Count})";
 
     public bool UsesApiKey => SelectedSite is BooruSite.E621 or BooruSite.Danbooru or BooruSite.Gelbooru;
+    public bool ShowRatingFilters => SelectedSite is not BooruSite.Safebooru;
     public string SecretLabel => UsesApiKey ? "API Key" : "Password";
     public string LoginButtonText => IsLoggedIn ? "Logout" : "Login";
     public bool ShowCredentialInputs => !IsLoggedIn;
