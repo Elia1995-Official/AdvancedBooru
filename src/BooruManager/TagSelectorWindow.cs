@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using BooruManager.Models;
@@ -15,9 +16,11 @@ public class TagSelectorWindow : Window
 
     public TagSelectorWindow(ImagePost post)
     {
-        Title = "Tag selector";
+        Title = "Tag Selector";
+        SystemDecorations = SystemDecorations.None;
+        CanResize = false;
         SizeToContent = SizeToContent.WidthAndHeight;
-        MinWidth = 620;
+        MinWidth = 460;
         MinHeight = 280;
         MaxWidth = 1200;
         MaxHeight = 920;
@@ -26,7 +29,69 @@ public class TagSelectorWindow : Window
 
         var root = new Grid
         {
-            RowDefinitions = new RowDefinitions("Auto,Auto")
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto")
+        };
+
+        var closeTitleButton = new Button
+        {
+            Content = "X",
+            Width = 34,
+            Height = 28,
+            Padding = new Thickness(0),
+            Margin = new Thickness(0, 0, 2, 0),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
+        closeTitleButton.Click += (_, _) => Close((IReadOnlyList<string>?)null);
+
+        var titleBarGrid = new Grid
+        {
+            Height = 36,
+            ColumnDefinitions = new ColumnDefinitions("34,*,34"),
+            Margin = new Thickness(8, 8, 8, 0)
+        };
+        titleBarGrid.Children.Add(new Border
+        {
+            Width = 34,
+            Height = 28,
+            Opacity = 0
+        });
+        var titleText = new TextBlock
+        {
+            Text = "Tag Selector",
+            FontSize = 15,
+            FontWeight = FontWeight.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = new SolidColorBrush(Color.Parse("#D7E6FA"))
+        };
+        Grid.SetColumn(titleText, 1);
+        titleBarGrid.Children.Add(titleText);
+        Grid.SetColumn(closeTitleButton, 2);
+        titleBarGrid.Children.Add(closeTitleButton);
+
+        titleBarGrid.PointerPressed += (_, e) =>
+        {
+            if (closeTitleButton.IsPointerOver)
+            {
+                return;
+            }
+
+            if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            {
+                BeginMoveDrag(e);
+            }
+        };
+
+        var titleBar = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#1A2330")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#2A8FD7")),
+            BorderThickness = new Thickness(1, 1, 1, 0),
+            CornerRadius = new CornerRadius(9, 9, 0, 0),
+            Child = titleBarGrid
         };
 
         var groupsPanel = new StackPanel
@@ -38,7 +103,9 @@ public class TagSelectorWindow : Window
         {
             Text = $"{post.SourceSite} #{post.Id}",
             FontSize = 13,
-            Foreground = new SolidColorBrush(Color.Parse("#8FB0CF"))
+            Foreground = new SolidColorBrush(Color.Parse("#8FB0CF")),
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 1080
         });
 
         var groupedTags = BuildGroupedTags(post);
@@ -85,10 +152,7 @@ public class TagSelectorWindow : Window
         var scroller = new ScrollViewer
         {
             Content = groupsPanel,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            MaxWidth = 1120,
-            MaxHeight = 760
+            MaxWidth = 1120
         };
 
         var useSelectedButton = new Button
@@ -119,11 +183,20 @@ public class TagSelectorWindow : Window
         bottomBar.Children.Add(useSelectedButton);
         bottomBar.Children.Add(closeButton);
 
+        root.Children.Add(titleBar);
+        Grid.SetRow(scroller, 1);
         root.Children.Add(scroller);
-        Grid.SetRow(bottomBar, 1);
+        Grid.SetRow(bottomBar, 2);
         root.Children.Add(bottomBar);
 
-        Content = root;
+        Content = new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.Parse("#2A8FD7")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(0, 0, 9, 9),
+            Background = new SolidColorBrush(Color.Parse("#11161D")),
+            Child = root
+        };
     }
 
     private IReadOnlyList<string> CollectSelectedTags()

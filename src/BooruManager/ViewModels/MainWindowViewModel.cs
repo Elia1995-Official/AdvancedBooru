@@ -1912,7 +1912,9 @@ public class AsyncRelayCommand : ICommand
     }
 
     public bool CanExecute(object? parameter) => true;
+#pragma warning disable CS0067
     public event EventHandler? CanExecuteChanged;
+#pragma warning restore CS0067
 
     public async void Execute(object? parameter)
     {
