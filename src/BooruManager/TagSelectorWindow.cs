@@ -12,6 +12,8 @@ namespace BooruManager;
 
 public class TagSelectorWindow : Window
 {
+    private const double CategoryListHeight = 112;
+    private const double TabContentWidth = 360;
     private readonly List<ListBox> _tagLists = new();
 
     public TagSelectorWindow(ImagePost post)
@@ -31,7 +33,6 @@ public class TagSelectorWindow : Window
         SystemDecorations = SystemDecorations.None;
         CanResize = false;
         SizeToContent = SizeToContent.WidthAndHeight;
-        MaxHeight = 700;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = new SolidColorBrush(Color.Parse("#11161D"));
 
@@ -107,11 +108,6 @@ public class TagSelectorWindow : Window
             Margin = new Thickness(12, 10, 12, 0)
         };
 
-        var scrollViewer = new ScrollViewer
-        {
-            Content = tabControl
-        };
-
         if (normalizedPosts.Count == 0)
         {
             tabControl.ItemsSource = new[]
@@ -130,9 +126,9 @@ public class TagSelectorWindow : Window
         else
         {
             var tabItems = normalizedPosts
-                .Select(post => new TabItem
+                .Select((post, index) => new TabItem
                 {
-                    Header = $"{post.SourceSite} #{post.Id}",
+                    Header = BuildTabHeader(post, index),
                     Content = BuildPostTabContent(post)
                 })
                 .ToList();
@@ -170,8 +166,8 @@ public class TagSelectorWindow : Window
         bottomBar.Children.Add(closeButton);
 
         root.Children.Add(titleBar);
-        Grid.SetRow(scrollViewer, 1);
-        root.Children.Add(scrollViewer);
+        Grid.SetRow(tabControl, 1);
+        root.Children.Add(tabControl);
         Grid.SetRow(bottomBar, 2);
         root.Children.Add(bottomBar);
 
@@ -190,8 +186,16 @@ public class TagSelectorWindow : Window
         var groupsPanel = new StackPanel
         {
             Spacing = 12,
-            Margin = new Thickness(6)
+            Margin = new Thickness(6),
+            Width = TabContentWidth
         };
+
+        groupsPanel.Children.Add(new TextBlock
+        {
+            Text = $"{post.SourceSite} #{post.Id}",
+            FontSize = 14,
+            Foreground = new SolidColorBrush(Color.Parse("#8FB3D9"))
+        });
 
         var groupedTags = BuildGroupedTags(post);
         if (groupedTags.Count == 0)
@@ -222,7 +226,10 @@ public class TagSelectorWindow : Window
             var listBox = new ListBox
             {
                 SelectionMode = SelectionMode.Multiple | SelectionMode.Toggle,
-                MaxHeight = 120,
+                Height = CategoryListHeight,
+                MinHeight = CategoryListHeight,
+                MaxHeight = CategoryListHeight,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
                 ItemsSource = group.Value
             };
 
@@ -232,6 +239,18 @@ public class TagSelectorWindow : Window
         }
 
         return groupsPanel;
+    }
+
+    private static Control BuildTabHeader(ImagePost post, int index)
+    {
+        var header = new TextBlock
+        {
+            Text = $"P{index + 1}",
+            Margin = new Thickness(2, 0)
+        };
+
+        ToolTip.SetTip(header, $"{post.SourceSite} #{post.Id}");
+        return header;
     }
 
     private static string BuildPostKey(ImagePost post)

@@ -93,7 +93,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
     private string _searchText = string.Empty;
     private string? _selectedRecentSearch;
-    private BooruSite _selectedSite = BooruSite.E621;
+    private BooruSite _selectedSite = BooruSite.Safebooru;
     private bool _includeSafe = true;
     private bool _includeQuestionable;
     private bool _includeAdult;
@@ -1410,10 +1410,13 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
     private static bool TryMapSourceSite(string sourceSite, out BooruSite site)
     {
-        site = BooruSite.E621;
+        site = BooruSite.Safebooru;
         var normalized = sourceSite?.Trim().ToLowerInvariant() ?? string.Empty;
         switch (normalized)
         {
+            case "safebooru":
+                site = BooruSite.Safebooru;
+                return true;
             case "e621":
                 site = BooruSite.E621;
                 return true;
@@ -1476,7 +1479,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
     private static bool TryParseFavoriteKey(string key, out BooruSite site, out string postId)
     {
-        site = BooruSite.E621;
+        site = BooruSite.Safebooru;
         postId = string.Empty;
 
         if (string.IsNullOrWhiteSpace(key))
@@ -1493,6 +1496,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         var normalizedSite = parts[0].Trim().ToLowerInvariant();
         site = normalizedSite switch
         {
+            "safebooru" => BooruSite.Safebooru,
             "e621" => BooruSite.E621,
             "danbooru" => BooruSite.Danbooru,
             "gelbooru" => BooruSite.Gelbooru,
@@ -1500,10 +1504,10 @@ public class MainWindowViewModel : INotifyPropertyChanged
             "tabbooru" or "tab.booru.org" => BooruSite.TabBooru,
             "allgirlbooru" or "allgirl.booru.org" => BooruSite.AllGirlBooru,
             "thecollectionbooru" or "the-collection.booru.org" => BooruSite.TheCollectionBooru,
-            _ => BooruSite.E621
+            _ => BooruSite.Safebooru
         };
 
-        if (normalizedSite is not ("e621" or "danbooru" or "gelbooru" or "xbooru" or "tabbooru" or "tab.booru.org" or "allgirlbooru" or "allgirl.booru.org" or "thecollectionbooru" or "the-collection.booru.org"))
+        if (normalizedSite is not ("safebooru" or "e621" or "danbooru" or "gelbooru" or "xbooru" or "tabbooru" or "tab.booru.org" or "allgirlbooru" or "allgirl.booru.org" or "thecollectionbooru" or "the-collection.booru.org"))
         {
             return false;
         }

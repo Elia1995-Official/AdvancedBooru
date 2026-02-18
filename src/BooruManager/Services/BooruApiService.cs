@@ -39,6 +39,7 @@ public class BooruApiService
     {
         var results = site switch
         {
+            BooruSite.Safebooru => await SearchGelbooruLikeAsync("https://safebooru.org", "Safebooru", tags, page, pageSize, credentials, false, cancellationToken),
             BooruSite.E621 => await SearchE621Async(tags, page, pageSize, credentials, cancellationToken),
             BooruSite.Danbooru => await SearchDanbooruAsync(tags, page, pageSize, credentials, cancellationToken),
             BooruSite.Gelbooru => await SearchGelbooruLikeAsync("https://gelbooru.com", "Gelbooru", tags, page, pageSize, credentials, true, cancellationToken),
@@ -69,6 +70,7 @@ public class BooruApiService
         {
             return site switch
             {
+                BooruSite.Safebooru => await GetGelbooruLikePostByIdAsync("https://safebooru.org", "Safebooru", postId, credentials, false, cancellationToken),
                 BooruSite.E621 => await GetE621PostByIdAsync(postId, credentials, cancellationToken),
                 BooruSite.Danbooru => await GetDanbooruPostByIdAsync(postId, credentials, cancellationToken),
                 BooruSite.Gelbooru => await GetGelbooruLikePostByIdAsync("https://gelbooru.com", "Gelbooru", postId, credentials, true, cancellationToken),
@@ -923,6 +925,7 @@ public class BooruApiService
         {
             return site switch
             {
+                BooruSite.Safebooru => true,
                 BooruSite.E621 => await ValidateE621Async(credentials, cancellationToken),
                 BooruSite.Danbooru => await ValidateDanbooruAsync(credentials, cancellationToken),
                 BooruSite.Gelbooru => true,
