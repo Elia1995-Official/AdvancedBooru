@@ -331,6 +331,12 @@ public partial class MainWindow : Window
             await vm.EnsurePostMediaResolvedAsync(post);
         }
 
+        post.FullImageUrl = PromoteLegacyBooruThumbUrl(post.FullImageUrl, post.SourceSite);
+        if (string.IsNullOrWhiteSpace(post.FullImageUrl))
+        {
+            post.FullImageUrl = PromoteLegacyBooruThumbUrl(post.PreviewUrl, post.SourceSite);
+        }
+
         if (IsVideoUrl(post.FullImageUrl))
         {
             var videoWindow = new VideoPlayerWindow(post.SourceSite, post.Id, post.FullImageUrl);
@@ -403,6 +409,61 @@ public partial class MainWindow : Window
 
         return path.EndsWith(".webm", StringComparison.OrdinalIgnoreCase)
             || path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string PromoteLegacyBooruThumbUrl(string url, string sourceSite)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return url;
+        }
+
+        var normalizedSource = (sourceSite ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalizedSource is not ("tab.booru.org" or "allgirl.booru.org" or "the-collection.booru.org"))
+        {
+            return url;
+        }
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return url;
+        }
+
+        if (!uri.Host.Equals("thumbs.booru.org", StringComparison.OrdinalIgnoreCase))
+        {
+            return url;
+        }
+
+        var segments = uri.AbsolutePath
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (segments.Length < 4)
+        {
+            return url;
+        }
+
+        var siteKey = segments[0];
+        var bucket = segments[1];
+        var directory = segments[2];
+        var fileName = segments[3];
+
+        if (!bucket.Equals("thumbnails", StringComparison.OrdinalIgnoreCase))
+        {
+            return url;
+        }
+
+        if (!fileName.StartsWith("thumbnail_", StringComparison.OrdinalIgnoreCase))
+        {
+            return url;
+        }
+
+        var fullName = fileName["thumbnail_".Length..];
+        if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(siteKey) || string.IsNullOrWhiteSpace(directory))
+        {
+            return url;
+        }
+
+        return $"https://img.booru.org/{siteKey}//images/{directory}/{fullName}";
     }
 
     private void CheckUpdatesButton_OnClick(object? sender, RoutedEventArgs e)

@@ -1399,6 +1399,11 @@ public class MainWindowViewModel : INotifyPropertyChanged
         var path = url;
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
+            if (uri.Host.Equals("thumbs.booru.org", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
             path = uri.AbsolutePath;
         }
 
