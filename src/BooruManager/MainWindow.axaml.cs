@@ -19,6 +19,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Title = LocalizationService.Instance["AppTitle"];
+        LocalizationService.Instance.LanguageChanged += () => Title = LocalizationService.Instance["AppTitle"];
     }
 
     private void InitializeComponent()

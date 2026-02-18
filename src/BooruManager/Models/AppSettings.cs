@@ -16,4 +16,5 @@ public class AppSettings
     public int MinimumHeight { get; set; }
     public string RequiredTags { get; set; } = string.Empty;
     public string ExcludedTags { get; set; } = string.Empty;
+    public string Language { get; set; } = string.Empty;
 }

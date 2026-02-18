@@ -114,25 +114,81 @@
                     HorizontalScrollBarVisibility="Disabled">
       <StackPanel Spacing="8" Margin="0,0,4,0">
 
-        <Expander IsExpanded="True" Header="Search">
+        <Expander IsExpanded="True" Header="{Binding LocSearch}">
           <StackPanel Spacing="6" Margin="0,8,0,0">
-            <TextBlock Text="Booru" FontSize="12" Foreground="#8FB0CF"/>
+            <TextBlock Text="{Binding LocBooru}" FontSize="12" Foreground="#8FB0CF"/>
             <ComboBox ItemsSource="{Binding Sites}" SelectedItem="{Binding SelectedSite}"/>
 
-            <TextBlock Text="Tags" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
+            <TextBlock Text="{Binding LocTags}" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
             <TextBox Watermark="e.g. blue_eyes solo" Text="{Binding SearchText}" KeyDown="SearchTextBox_OnKeyDown"/>
 
-            <TextBlock Text="Recent" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
+            <TextBlock Text="{Binding LocRecent}" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
             <Grid ColumnDefinitions="*,Auto">
               <ComboBox Grid.Column="0" ItemsSource="{Binding RecentSearches}" SelectedItem="{Binding SelectedRecentSearch}"/>
-              <Button Grid.Column="1" Content="X" Width="28" Margin="4,0,0,0" Command="{Binding ClearHistoryCommand}" ToolTip.Tip="Clear history"/>
+              <Button Grid.Column="1" Content="X" Width="28" Margin="4,0,0,0" Command="{Binding ClearHistoryCommand}" ToolTip.Tip="{Binding LocClearHistory}"/>
             </Grid>
 
-            <Button Content="Search" Command="{Binding SearchCommand}" Height="32" Margin="0,8,0,0"/>
+            <Button Content="{Binding LocSearch}" Command="{Binding SearchCommand}" Height="32" Margin="0,8,0,0"/>
           </StackPanel>
         </Expander>
 
-        <Expander IsExpanded="True" Header="Results">
+        <Expander IsExpanded="True" Header="{Binding LocResults}">
+          <StackPanel Spacing="6" Margin="0,8,0,0">
+            <Grid ColumnDefinitions="*,*">
+              <StackPanel Grid.Column="0" Spacing="2">
+                <TextBlock Text="{Binding LocPerPage}" FontSize="12" Foreground="#8FB0CF"/>
+                <ComboBox ItemsSource="{Binding PageSizeOptions}" SelectedItem="{Binding SelectedPageSize}"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="2" Margin="4,0,0,0">
+                <TextBlock Text="{Binding LocSort}" FontSize="12" Foreground="#8FB0CF"/>
+                <ComboBox ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSortOption}"/>
+              </StackPanel>
+            </Grid>
+
+            <TextBlock Text="{Binding LocMediaType}" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
+            <ComboBox ItemsSource="{Binding MediaTypeFilterOptions}" SelectedItem="{Binding SelectedMediaTypeFilter}"/>
+
+            <TextBlock Text="{Binding LocSize}" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
+            <ComboBox ItemsSource="{Binding SizeFilterOptions}" SelectedItem="{Binding SelectedSizeFilter}"/>
+
+            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowRatingFilters}" Margin="0,4,0,0">
+              <CheckBox Content="{Binding LocSafe}" IsChecked="{Binding IncludeSafe}"/>
+              <CheckBox Content="{Binding LocQuestionable}" IsChecked="{Binding IncludeQuestionable}"/>
+              <CheckBox Content="{Binding LocAdult}" IsChecked="{Binding IncludeAdult}"/>
+            </StackPanel>
+
+            <CheckBox Content="{Binding FavoritesSummary}" IsChecked="{Binding ShowFavoritesOnly}" Margin="0,4,0,0"/>
+          </StackPanel>
+        </Expander>
+
+        <Expander IsExpanded="True" Header="{Binding LocFilters}">
+          <StackPanel Spacing="6" Margin="0,8,0,0">
+            <Grid ColumnDefinitions="*,*,*">
+              <StackPanel Grid.Column="0" Spacing="2">
+                <TextBlock Text="{Binding LocMinScore}" FontSize="12" Foreground="#8FB0CF"/>
+                <ComboBox ItemsSource="{Binding MinimumScoreOptions}" SelectedItem="{Binding MinimumScore}"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="2" Margin="4,0,0,0">
+                <TextBlock Text="{Binding LocMinWidth}" FontSize="12" Foreground="#8FB0CF"/>
+                <ComboBox ItemsSource="{Binding MinimumDimensionOptions}" SelectedItem="{Binding MinimumWidth}"/>
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="2" Margin="4,0,0,0">
+                <TextBlock Text="{Binding LocMinHeight}" FontSize="12" Foreground="#8FB0CF"/>
+                <ComboBox ItemsSource="{Binding MinimumDimensionOptions}" SelectedItem="{Binding MinimumHeight}"/>
+              </StackPanel>
+            </Grid>
+
+            <TextBlock Text="{Binding LocMustInclude}" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
+            <TextBox Watermark="tag_a tag_b" Text="{Binding RequiredTags}"/>
+
+            <TextBlock Text="{Binding LocExclude}" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
+            <TextBox Watermark="tag_x tag_y" Text="{Binding ExcludedTags}"/>
+
+            <Button Content="{Binding LocResetFilters}" Command="{Binding ResetLocalFiltersCommand}" Margin="0,4,0,0"/>
+          </StackPanel>
+        </Expander>
+
+        <Expander IsExpanded="True" Header="{Binding LocResults}">
           <StackPanel Spacing="6" Margin="0,8,0,0">
             <Grid ColumnDefinitions="*,*">
               <StackPanel Grid.Column="0" Spacing="2">
@@ -161,41 +217,41 @@
           </StackPanel>
         </Expander>
 
-        <Expander IsExpanded="True" Header="Filters">
+        <Expander IsExpanded="True" Header="{Binding LocFilters}">
           <StackPanel Spacing="6" Margin="0,8,0,0">
             <Grid ColumnDefinitions="*,*,*">
               <StackPanel Grid.Column="0" Spacing="2">
-                <TextBlock Text="Min score" FontSize="12" Foreground="#8FB0CF"/>
+                <TextBlock Text="{Binding LocMinScore}" FontSize="12" Foreground="#8FB0CF"/>
                 <ComboBox ItemsSource="{Binding MinimumScoreOptions}" SelectedItem="{Binding MinimumScore}"/>
               </StackPanel>
               <StackPanel Grid.Column="1" Spacing="2" Margin="4,0,0,0">
-                <TextBlock Text="Min width" FontSize="12" Foreground="#8FB0CF"/>
+                <TextBlock Text="{Binding LocMinWidth}" FontSize="12" Foreground="#8FB0CF"/>
                 <ComboBox ItemsSource="{Binding MinimumDimensionOptions}" SelectedItem="{Binding MinimumWidth}"/>
               </StackPanel>
               <StackPanel Grid.Column="2" Spacing="2" Margin="4,0,0,0">
-                <TextBlock Text="Min height" FontSize="12" Foreground="#8FB0CF"/>
+                <TextBlock Text="{Binding LocMinHeight}" FontSize="12" Foreground="#8FB0CF"/>
                 <ComboBox ItemsSource="{Binding MinimumDimensionOptions}" SelectedItem="{Binding MinimumHeight}"/>
               </StackPanel>
             </Grid>
 
-            <TextBlock Text="Must include" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
+            <TextBlock Text="{Binding LocMustInclude}" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
             <TextBox Watermark="tag_a tag_b" Text="{Binding RequiredTags}"/>
 
-            <TextBlock Text="Exclude" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
+            <TextBlock Text="{Binding LocExclude}" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
             <TextBox Watermark="tag_x tag_y" Text="{Binding ExcludedTags}"/>
 
-            <Button Content="Reset filters" Command="{Binding ResetLocalFiltersCommand}" Margin="0,4,0,0"/>
+            <Button Content="{Binding LocResetFilters}" Command="{Binding ResetLocalFiltersCommand}" Margin="0,4,0,0"/>
           </StackPanel>
         </Expander>
 
         <StackPanel Orientation="Horizontal" Spacing="8">
-          <Button Content="Shuffle" Command="{Binding ShuffleVisibleCommand}" Padding="12,6"/>
-          <Button Content="Export CSV" Command="{Binding ExportVisibleCommand}" Padding="12,6"/>
+          <Button Content="{Binding LocShuffle}" Command="{Binding ShuffleVisibleCommand}" Padding="12,6"/>
+          <Button Content="{Binding LocExportCsv}" Command="{Binding ExportVisibleCommand}" Padding="12,6"/>
         </StackPanel>
 
         <Separator Margin="0,4,0,4"/>
 
-        <Expander Header="Account">
+        <Expander Header="{Binding LocAccount}">
           <StackPanel Spacing="6" Margin="0,8,0,0">
             <TextBlock Text="{Binding LoggedInAsText}" IsVisible="{Binding ShowLoggedInInfo}" Foreground="#59BEF9"/>
 
@@ -211,7 +267,17 @@
           </StackPanel>
         </Expander>
 
-        <Button Content="Check for updates" Click="CheckUpdatesButton_OnClick" HorizontalAlignment="Left" Padding="12,6"/>
+        <Expander Header="{Binding LocLanguage}">
+          <StackPanel Spacing="6" Margin="0,8,0,0">
+            <TextBlock Text="{Binding LocLanguage}" FontSize="12" Foreground="#8FB0CF"/>
+            <ComboBox ItemsSource="{Binding AvailableLanguages}" 
+                      SelectedValue="{Binding SelectedLanguage}"
+                      SelectedValueBinding="{Binding Code}"
+                      DisplayMemberBinding="{Binding DisplayName}"/>
+          </StackPanel>
+        </Expander>
+
+        <Button Content="{Binding LocCheckUpdates}" Click="CheckUpdatesButton_OnClick" HorizontalAlignment="Left" Padding="12,6"/>
 
       </StackPanel>
       </ScrollViewer>
@@ -220,7 +286,7 @@
     <Grid Grid.Column="1" RowDefinitions="*,Auto" Margin="12,0,0,0">
       <Border Grid.Row="0" Background="#0F141B" CornerRadius="10" Padding="10">
         <TabControl>
-          <TabItem Header="Browse">
+          <TabItem Header="{Binding LocBrowse}">
             <ScrollViewer x:Name="PostsScrollViewer"
                           ScrollChanged="PostsScrollViewer_OnScrollChanged"
                           VerticalScrollBarVisibility="Visible"

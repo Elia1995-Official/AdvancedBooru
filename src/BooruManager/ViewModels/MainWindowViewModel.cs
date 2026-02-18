@@ -120,6 +120,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private int _maxPages = int.MaxValue;
     private bool _isInitialLoad = true;
     private long _previewQueueSequence;
+    private string _selectedLanguage = "en";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -134,6 +135,52 @@ public class MainWindowViewModel : INotifyPropertyChanged
     public IReadOnlyList<ResultSortOption> SortOptions { get; } = SortOptionsInternal;
     public IReadOnlyList<ResultSortOption> MediaTypeFilterOptions { get; } = MediaTypeFilterOptionsInternal;
     public IReadOnlyList<ResultSortOption> SizeFilterOptions { get; } = SizeFilterOptionsInternal;
+    public IReadOnlyList<LanguageInfo> AvailableLanguages => Services.LocalizationService.Instance.AvailableLanguages;
+
+    public string LocSearch => Services.LocalizationService.Instance["Search"];
+    public string LocBooru => Services.LocalizationService.Instance["Booru"];
+    public string LocRecent => Services.LocalizationService.Instance["Recent"];
+    public string LocClearHistory => Services.LocalizationService.Instance["ClearHistory"];
+    public string LocResults => Services.LocalizationService.Instance["Results"];
+    public string LocPerPage => Services.LocalizationService.Instance["PerPage"];
+    public string LocSort => Services.LocalizationService.Instance["Sort"];
+    public string LocMediaType => Services.LocalizationService.Instance["MediaType"];
+    public string LocSize => Services.LocalizationService.Instance["Size"];
+    public string LocFilters => Services.LocalizationService.Instance["Filters"];
+    public string LocMinScore => Services.LocalizationService.Instance["MinScore"];
+    public string LocMinWidth => Services.LocalizationService.Instance["MinWidth"];
+    public string LocMinHeight => Services.LocalizationService.Instance["MinHeight"];
+    public string LocMustInclude => Services.LocalizationService.Instance["MustInclude"];
+    public string LocExclude => Services.LocalizationService.Instance["Exclude"];
+    public string LocResetFilters => Services.LocalizationService.Instance["ResetFilters"];
+    public string LocShuffle => Services.LocalizationService.Instance["Shuffle"];
+    public string LocExportCsv => Services.LocalizationService.Instance["ExportCsv"];
+    public string LocAccount => Services.LocalizationService.Instance["Account"];
+    public string LocLanguage => Services.LocalizationService.Instance["Language"];
+    public string LocCheckUpdates => Services.LocalizationService.Instance["CheckUpdates"];
+    public string LocBrowse => Services.LocalizationService.Instance["Browse"];
+    public string LocTags => Services.LocalizationService.Instance["Tags"];
+    public string LocSafe => Services.LocalizationService.Instance["Safe"];
+    public string LocQuestionable => Services.LocalizationService.Instance["Questionable"];
+    public string LocAdult => Services.LocalizationService.Instance["Adult"];
+
+    public string SelectedLanguage
+    {
+        get => _selectedLanguage;
+        set
+        {
+            if (_selectedLanguage == value)
+            {
+                return;
+            }
+
+            _selectedLanguage = value;
+            OnPropertyChanged();
+            LocalizationService.Instance.CurrentLanguage = value;
+            RefreshLocalizedProperties();
+            _ = SaveSettingsAsync();
+        }
+    }
 
     public string SearchText
     {
@@ -785,6 +832,13 @@ public class MainWindowViewModel : INotifyPropertyChanged
         _excludedTags = (_settings.ExcludedTags ?? string.Empty).Trim();
         RebuildTagFilterTokens();
 
+        if (!string.IsNullOrEmpty(_settings.Language))
+        {
+            _selectedLanguage = _settings.Language;
+            LocalizationService.Instance.CurrentLanguage = _settings.Language;
+        }
+        RefreshLocalizedProperties();
+
         OnPropertyChanged(nameof(SelectedPageSize));
         OnPropertyChanged(nameof(SelectedSortOption));
         OnPropertyChanged(nameof(ShowFavoritesOnly));
@@ -1160,6 +1214,36 @@ public class MainWindowViewModel : INotifyPropertyChanged
     {
         _requiredTagTokens = ParseTagFilterTokens(_requiredTags);
         _excludedTagTokens = ParseTagFilterTokens(_excludedTags);
+    }
+
+    private void RefreshLocalizedProperties()
+    {
+        OnPropertyChanged(nameof(LocSearch));
+        OnPropertyChanged(nameof(LocBooru));
+        OnPropertyChanged(nameof(LocRecent));
+        OnPropertyChanged(nameof(LocClearHistory));
+        OnPropertyChanged(nameof(LocResults));
+        OnPropertyChanged(nameof(LocPerPage));
+        OnPropertyChanged(nameof(LocSort));
+        OnPropertyChanged(nameof(LocMediaType));
+        OnPropertyChanged(nameof(LocSize));
+        OnPropertyChanged(nameof(LocFilters));
+        OnPropertyChanged(nameof(LocMinScore));
+        OnPropertyChanged(nameof(LocMinWidth));
+        OnPropertyChanged(nameof(LocMinHeight));
+        OnPropertyChanged(nameof(LocMustInclude));
+        OnPropertyChanged(nameof(LocExclude));
+        OnPropertyChanged(nameof(LocResetFilters));
+        OnPropertyChanged(nameof(LocShuffle));
+        OnPropertyChanged(nameof(LocExportCsv));
+        OnPropertyChanged(nameof(LocAccount));
+        OnPropertyChanged(nameof(LocLanguage));
+        OnPropertyChanged(nameof(LocCheckUpdates));
+        OnPropertyChanged(nameof(LocBrowse));
+        OnPropertyChanged(nameof(LocTags));
+        OnPropertyChanged(nameof(LocSafe));
+        OnPropertyChanged(nameof(LocQuestionable));
+        OnPropertyChanged(nameof(LocAdult));
     }
 
     private void AddPostsToVisibleCollection(IReadOnlyList<ImagePost> posts)
@@ -1649,6 +1733,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         _settings.MinimumHeight = MinimumHeight;
         _settings.RequiredTags = RequiredTags;
         _settings.ExcludedTags = ExcludedTags;
+        _settings.Language = SelectedLanguage;
 
         await _settingsSaveGate.WaitAsync(cancellationToken);
         try
