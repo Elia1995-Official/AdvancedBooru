@@ -12,17 +12,25 @@ namespace BooruManager;
 
 public class TagSelectorWindow : Window
 {
-    private readonly Dictionary<string, ListBox> _groupLists = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<ListBox> _tagLists = new();
 
     public TagSelectorWindow(ImagePost post)
+        : this(new[] { post })
     {
+    }
+
+    public TagSelectorWindow(IReadOnlyList<ImagePost> posts)
+    {
+        var normalizedPosts = (posts ?? Array.Empty<ImagePost>())
+            .Where(p => p is not null && !string.IsNullOrWhiteSpace(p.SourceSite) && !string.IsNullOrWhiteSpace(p.Id))
+            .GroupBy(BuildPostKey, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
+
         Title = "Tag Selector";
         SystemDecorations = SystemDecorations.None;
         CanResize = false;
         SizeToContent = SizeToContent.WidthAndHeight;
-        MinWidth = 460;
-        MinHeight = 420;
-        MaxWidth = 1200;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = new SolidColorBrush(Color.Parse("#11161D"));
 
@@ -93,62 +101,39 @@ public class TagSelectorWindow : Window
             Child = titleBarGrid
         };
 
-        var groupsPanel = new StackPanel
+        var tabControl = new TabControl
         {
-            Spacing = 12,
-            Margin = new Thickness(12)
+            Margin = new Thickness(12, 10, 12, 0)
         };
-        groupsPanel.Children.Add(new TextBlock
-        {
-            Text = $"{post.SourceSite} #{post.Id}",
-            FontSize = 13,
-            Foreground = new SolidColorBrush(Color.Parse("#8FB0CF")),
-            TextWrapping = TextWrapping.Wrap,
-            MaxWidth = 1080
-        });
 
-        var groupedTags = BuildGroupedTags(post);
-        if (groupedTags.Count == 0)
+        if (normalizedPosts.Count == 0)
         {
-            groupsPanel.Children.Add(new TextBlock
+            tabControl.ItemsSource = new[]
             {
-                Text = "No tags available for this post.",
-                FontSize = 15
-            });
+                new TabItem
+                {
+                    Header = "No posts",
+                    Content = new TextBlock
+                    {
+                        Text = "No tags available for selected posts.",
+                        Margin = new Thickness(6)
+                    }
+                }
+            };
         }
         else
         {
-            foreach (var group in groupedTags)
-            {
-                var section = new StackPanel
+            var tabItems = normalizedPosts
+                .Select(post => new TabItem
                 {
-                    Spacing = 6
-                };
+                    Header = $"{post.SourceSite} #{post.Id}",
+                    Content = BuildPostTabContent(post)
+                })
+                .ToList();
 
-                section.Children.Add(new TextBlock
-                {
-                    Text = $"{group.Key} ({group.Value.Count})",
-                    FontSize = 15,
-                    FontWeight = FontWeight.SemiBold,
-                    Foreground = new SolidColorBrush(Color.Parse("#59BEF9"))
-                });
-
-                var listBox = new ListBox
-                {
-                    // Allow multi-select with simple clicks, without requiring Ctrl/Shift.
-                    SelectionMode = SelectionMode.Multiple | SelectionMode.Toggle,
-                    MaxHeight = 180,
-                    ItemsSource = group.Value
-                };
-
-                _groupLists[group.Key] = listBox;
-                section.Children.Add(listBox);
-
-                groupsPanel.Children.Add(section);
-            }
+            tabControl.ItemsSource = tabItems;
+            tabControl.SelectedIndex = 0;
         }
-
-        groupsPanel.MaxWidth = 1120;
 
         var useSelectedButton = new Button
         {
@@ -179,8 +164,8 @@ public class TagSelectorWindow : Window
         bottomBar.Children.Add(closeButton);
 
         root.Children.Add(titleBar);
-        Grid.SetRow(groupsPanel, 1);
-        root.Children.Add(groupsPanel);
+        Grid.SetRow(tabControl, 1);
+        root.Children.Add(tabControl);
         Grid.SetRow(bottomBar, 2);
         root.Children.Add(bottomBar);
 
@@ -194,10 +179,63 @@ public class TagSelectorWindow : Window
         };
     }
 
+    private Control BuildPostTabContent(ImagePost post)
+    {
+        var groupsPanel = new StackPanel
+        {
+            Spacing = 12,
+            Margin = new Thickness(6)
+        };
+
+        var groupedTags = BuildGroupedTags(post);
+        if (groupedTags.Count == 0)
+        {
+            groupsPanel.Children.Add(new TextBlock
+            {
+                Text = "No tags available for this post.",
+                FontSize = 15
+            });
+            return groupsPanel;
+        }
+
+        foreach (var group in groupedTags)
+        {
+            var section = new StackPanel
+            {
+                Spacing = 6
+            };
+
+            section.Children.Add(new TextBlock
+            {
+                Text = $"{group.Key} ({group.Value.Count})",
+                FontSize = 15,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = new SolidColorBrush(Color.Parse("#59BEF9"))
+            });
+
+            var listBox = new ListBox
+            {
+                SelectionMode = SelectionMode.Multiple | SelectionMode.Toggle,
+                ItemsSource = group.Value
+            };
+
+            _tagLists.Add(listBox);
+            section.Children.Add(listBox);
+            groupsPanel.Children.Add(section);
+        }
+
+        return groupsPanel;
+    }
+
+    private static string BuildPostKey(ImagePost post)
+    {
+        return $"{post.SourceSite.Trim().ToLowerInvariant()}::{post.Id.Trim()}";
+    }
+
     private IReadOnlyList<string> CollectSelectedTags()
     {
         var selected = new List<string>();
-        foreach (var listBox in _groupLists.Values)
+        foreach (var listBox in _tagLists)
         {
             var selectedItems = listBox.SelectedItems;
             if (selectedItems is null)

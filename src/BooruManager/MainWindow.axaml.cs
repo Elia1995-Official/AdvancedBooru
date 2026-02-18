@@ -122,8 +122,20 @@ public partial class MainWindow : Window
         }
 
         var selected = new List<ImagePost>();
-        selected.AddRange(vm.Images.Where(p => p.IsSelected));
-        selected.AddRange(vm.FavoriteImages.Where(p => p.IsSelected));
+        var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var post in vm.Images.Where(p => p.IsSelected)
+                     .Concat(vm.FavoriteImages.Where(p => p.IsSelected)))
+        {
+            var key = $"{post.SourceSite.Trim().ToLowerInvariant()}::{post.Id.Trim()}";
+            if (!seenKeys.Add(key))
+            {
+                continue;
+            }
+
+            selected.Add(post);
+        }
+
         return selected;
     }
 
@@ -237,23 +249,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        List<string> allSelectedTags = new();
-
         foreach (var post in selectedPosts)
         {
             await vm.EnsurePostTagsResolvedAsync(post);
-
-            var selector = new TagSelectorWindow(post);
-            var selectedTags = await selector.ShowDialog<IReadOnlyList<string>?>(this);
-            if (selectedTags is { Count: > 0 })
-            {
-                allSelectedTags.AddRange(selectedTags);
-            }
         }
 
-        if (allSelectedTags.Count > 0)
+        var selector = new TagSelectorWindow(selectedPosts);
+        var selectedTags = await selector.ShowDialog<IReadOnlyList<string>?>(this);
+        if (selectedTags is { Count: > 0 })
         {
-            vm.SearchText = string.Join(' ', allSelectedTags.Distinct());
+            vm.SearchText = string.Join(' ', selectedTags.Distinct());
             vm.SearchCommand.Execute(null);
         }
 

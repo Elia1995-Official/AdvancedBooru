@@ -1,3 +1,4 @@
+using System;
 using Avalonia;
 using Avalonia.ReactiveUI;
 using BooruManager.Services;
@@ -10,6 +11,8 @@ internal class Program
 
     public static void Main(string[] args)
     {
+        Environment.SetEnvironmentVariable("AVALONIA_GLOBAL_SCALE_FACTOR", "0.8");
+
         _updateService = new UpdateService();
         _updateService.Initialize();
 
