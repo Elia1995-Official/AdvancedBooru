@@ -31,6 +31,7 @@ public class TagSelectorWindow : Window
         SystemDecorations = SystemDecorations.None;
         CanResize = false;
         SizeToContent = SizeToContent.WidthAndHeight;
+        MaxHeight = 700;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = new SolidColorBrush(Color.Parse("#11161D"));
 
@@ -106,6 +107,11 @@ public class TagSelectorWindow : Window
             Margin = new Thickness(12, 10, 12, 0)
         };
 
+        var scrollViewer = new ScrollViewer
+        {
+            Content = tabControl
+        };
+
         if (normalizedPosts.Count == 0)
         {
             tabControl.ItemsSource = new[]
@@ -164,8 +170,8 @@ public class TagSelectorWindow : Window
         bottomBar.Children.Add(closeButton);
 
         root.Children.Add(titleBar);
-        Grid.SetRow(tabControl, 1);
-        root.Children.Add(tabControl);
+        Grid.SetRow(scrollViewer, 1);
+        root.Children.Add(scrollViewer);
         Grid.SetRow(bottomBar, 2);
         root.Children.Add(bottomBar);
 
@@ -216,6 +222,7 @@ public class TagSelectorWindow : Window
             var listBox = new ListBox
             {
                 SelectionMode = SelectionMode.Multiple | SelectionMode.Toggle,
+                MaxHeight = 120,
                 ItemsSource = group.Value
             };
 
