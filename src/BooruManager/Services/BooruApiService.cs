@@ -610,6 +610,12 @@ public class BooruApiService
             var preview = MakeAbsoluteGelbooruLikeUrl(baseUrl, previewRaw);
             var full = MakeAbsoluteGelbooruLikeUrl(baseUrl, fullRaw);
 
+            if (IsThumbsSubdomainSite(baseUrl))
+            {
+                full = FixThumbsSubdomainUrl(full);
+                preview = FixThumbsSubdomainUrl(preview);
+            }
+
             if (string.IsNullOrWhiteSpace(preview) || string.IsNullOrWhiteSpace(full))
             {
                 continue;
@@ -646,6 +652,21 @@ public class BooruApiService
         return baseUrl.Contains("allgirl.booru.org", StringComparison.OrdinalIgnoreCase)
             || baseUrl.Contains("the-collection.booru.org", StringComparison.OrdinalIgnoreCase)
             || baseUrl.Contains("tab.booru.org", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FixThumbsSubdomainUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return url;
+        }
+
+        if (url.Contains("://thumbs.", StringComparison.OrdinalIgnoreCase))
+        {
+            return url.Replace("://thumbs.", "://img.", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return url;
     }
 
     private static bool ShouldUseGelbooruHtmlFallback(string baseUrl, HttpStatusCode? statusCode)
