@@ -5,14 +5,7 @@ Desktop Booru browser for Windows, Linux, and macOS built with Avalonia.
 ## Current Features
 
 ### Search and Sources
-- Multi-site support:
-  - e621
-  - Danbooru
-  - Gelbooru
-  - XBooru
-  - tab.booru.org
-  - allgirl.booru.org
-  - the-collection.booru.org
+- Multi-site support
 - Real API integrations (JSON/XML), with HTML fallback parsing for Gelbooru-like sources when needed.
 - Automatic full-load search flow: after a search starts, the app keeps loading pages until no more results are available.
 - Rating filter toggles: `safe`, `questionable`, `adult`.
