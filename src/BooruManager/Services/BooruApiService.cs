@@ -300,24 +300,24 @@ public class BooruApiService
             ?? post.Attribute("sample_url")?.Value
             ?? post.Attribute("file_url")?.Value
             ?? string.Empty;
-        var fullRaw = post.Attribute("file_url")?.Value
-            ?? post.Attribute("sample_url")?.Value
+        var fullRaw = post.Attribute("sample_url")?.Value
+            ?? post.Attribute("file_url")?.Value
             ?? previewRaw;
         var rating = post.Attribute("rating")?.Value ?? string.Empty;
         var tagsText = post.Attribute("tags")?.Value ?? string.Empty;
         var score = ParseInt(post.Attribute("score")?.Value);
         var createdAtUnix = ParseUnixTime(post.Attribute("created_at")?.Value);
         var tagGroups = BuildSingleTagGroup(tagsText);
-        var width = ParsePositiveInt(post.Attribute("width")?.Value);
+        var width = ParsePositiveInt(post.Attribute("sample_width")?.Value);
         if (width <= 0)
         {
-            width = ParsePositiveInt(post.Attribute("sample_width")?.Value);
+            width = ParsePositiveInt(post.Attribute("width")?.Value);
         }
 
-        var height = ParsePositiveInt(post.Attribute("height")?.Value);
+        var height = ParsePositiveInt(post.Attribute("sample_height")?.Value);
         if (height <= 0)
         {
-            height = ParsePositiveInt(post.Attribute("sample_height")?.Value);
+            height = ParsePositiveInt(post.Attribute("height")?.Value);
         }
 
         var preview = MakeAbsoluteGelbooruLikeUrl(baseUrl, previewRaw);
@@ -325,7 +325,21 @@ public class BooruApiService
 
         if (string.IsNullOrWhiteSpace(preview) || string.IsNullOrWhiteSpace(full))
         {
-            return null;
+            return IsGelbooruBaseUrl(baseUrl)
+                ? await GetGelbooruPostByIdFromHtmlAsync(baseUrl, sourceName, postId, cancellationToken)
+                : null;
+        }
+
+        if (string.Equals(preview, full, StringComparison.OrdinalIgnoreCase) || IsLikelySampleOrPreviewMediaUrl(full))
+        {
+            var htmlResolved = await GetGelbooruPostByIdFromHtmlAsync(baseUrl, sourceName, postId, cancellationToken);
+            if (htmlResolved is not null
+                && !string.IsNullOrWhiteSpace(htmlResolved.FullImageUrl)
+                && !string.Equals(htmlResolved.FullImageUrl, htmlResolved.PreviewUrl, StringComparison.OrdinalIgnoreCase)
+                && !IsLikelySampleOrPreviewMediaUrl(htmlResolved.FullImageUrl))
+            {
+                return htmlResolved;
+            }
         }
 
         return new ImagePost
@@ -872,12 +886,12 @@ public class BooruApiService
 
         var originalMatch = Regex.Match(
             html,
-            "<a\\s+href=\"(?<url>[^\"]+)\"[^>]*>\\s*Original image\\s*</a>",
+            "<a\\b[^>]*href=[\"'](?<url>[^\"']+)[\"'][^>]*>\\s*Original(?:\\s+image)?\\s*</a>",
             RegexOptions.IgnoreCase);
 
         var imageMatch = Regex.Match(
             html,
-            "<img[^>]*id=\"image\"[^>]*src=\"(?<url>[^\"]+)\"[^>]*>",
+            "<img\\b(?=[^>]*\\bid=[\"']image[\"'])(?=[^>]*\\bsrc=[\"'](?<url>[^\"']+)[\"'])[^>]*>",
             RegexOptions.IgnoreCase);
 
         var previewMetaMatch = Regex.Match(
@@ -1111,6 +1125,28 @@ public class BooruApiService
             "e" or "explicit" or "adult" => allowAdult,
             _ => true
         };
+    }
+
+    private static bool IsLikelySampleOrPreviewMediaUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        var path = url;
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            path = uri.AbsolutePath;
+        }
+
+        var normalized = (path ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized.Contains("/samples/", StringComparison.Ordinal)
+            || normalized.Contains("/sample/", StringComparison.Ordinal)
+            || normalized.Contains("/thumbnails/", StringComparison.Ordinal)
+            || normalized.Contains("/thumbnail/", StringComparison.Ordinal)
+            || normalized.Contains("sample_", StringComparison.Ordinal)
+            || normalized.Contains("thumbnail_", StringComparison.Ordinal);
     }
 
     private static bool RequiresBrowserLikeUserAgent(string baseUrl)

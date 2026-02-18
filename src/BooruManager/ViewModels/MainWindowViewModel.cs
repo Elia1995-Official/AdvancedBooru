@@ -1381,7 +1381,34 @@ public class MainWindowViewModel : INotifyPropertyChanged
             return true;
         }
 
-        return string.Equals(post.FullImageUrl, post.PreviewUrl, StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(post.FullImageUrl, post.PreviewUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return IsLikelySampleOrPreviewMediaUrl(post.FullImageUrl);
+    }
+
+    private static bool IsLikelySampleOrPreviewMediaUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        var path = url;
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            path = uri.AbsolutePath;
+        }
+
+        var normalized = path.Trim().ToLowerInvariant();
+        return normalized.Contains("/samples/", StringComparison.Ordinal)
+            || normalized.Contains("/sample/", StringComparison.Ordinal)
+            || normalized.Contains("/thumbnails/", StringComparison.Ordinal)
+            || normalized.Contains("/thumbnail/", StringComparison.Ordinal)
+            || normalized.Contains("sample_", StringComparison.Ordinal)
+            || normalized.Contains("thumbnail_", StringComparison.Ordinal);
     }
 
     private static bool HasTagGroups(ImagePost post)
