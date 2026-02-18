@@ -21,9 +21,8 @@ public class TagSelectorWindow : Window
         CanResize = false;
         SizeToContent = SizeToContent.WidthAndHeight;
         MinWidth = 460;
-        MinHeight = 280;
+        MinHeight = 420;
         MaxWidth = 1200;
-        MaxHeight = 920;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = new SolidColorBrush(Color.Parse("#11161D"));
 
@@ -149,11 +148,7 @@ public class TagSelectorWindow : Window
             }
         }
 
-        var scroller = new ScrollViewer
-        {
-            Content = groupsPanel,
-            MaxWidth = 1120
-        };
+        groupsPanel.MaxWidth = 1120;
 
         var useSelectedButton = new Button
         {
@@ -184,8 +179,8 @@ public class TagSelectorWindow : Window
         bottomBar.Children.Add(closeButton);
 
         root.Children.Add(titleBar);
-        Grid.SetRow(scroller, 1);
-        root.Children.Add(scroller);
+        Grid.SetRow(groupsPanel, 1);
+        root.Children.Add(groupsPanel);
         Grid.SetRow(bottomBar, 2);
         root.Children.Add(bottomBar);
 
