@@ -1,0 +1,38 @@
+# Build results
+bin/
+obj/
+out/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Avalonia
+*.repl
+*.userprefs
+*.appxbundle
+*.appx
+
+# .NET
+*.dll
+*.exe
+*.pdb
+*.cache
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Package directories
+packages/
