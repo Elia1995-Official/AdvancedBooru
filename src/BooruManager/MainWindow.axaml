@@ -191,7 +191,11 @@
       <Border Grid.Row="0" Background="#0F141B" CornerRadius="10" Padding="10">
         <TabControl>
           <TabItem Header="Browse">
-            <ScrollViewer x:Name="PostsScrollViewer" ScrollChanged="PostsScrollViewer_OnScrollChanged">
+            <ScrollViewer x:Name="PostsScrollViewer"
+                          ScrollChanged="PostsScrollViewer_OnScrollChanged"
+                          VerticalScrollBarVisibility="Visible"
+                          HorizontalScrollBarVisibility="Disabled"
+                          AllowAutoHide="False">
               <ItemsControl ItemsSource="{Binding Images}" ItemTemplate="{StaticResource PostCardTemplate}">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate>
@@ -203,7 +207,9 @@
           </TabItem>
 
           <TabItem Header="{Binding FavoritesTabTitle}">
-            <ScrollViewer>
+            <ScrollViewer VerticalScrollBarVisibility="Visible"
+                          HorizontalScrollBarVisibility="Disabled"
+                          AllowAutoHide="False">
               <ItemsControl ItemsSource="{Binding FavoriteImages}" ItemTemplate="{StaticResource PostCardTemplate}">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate>

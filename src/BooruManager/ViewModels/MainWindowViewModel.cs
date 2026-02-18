@@ -117,6 +117,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private string _statusText = "Ready";
     private int _nextPage = 1;
     private bool _hasMorePages = true;
+    private int _maxPages = 10;
     private long _previewQueueSequence;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -545,7 +546,14 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
     public async Task TryLoadMoreAsync()
     {
-        await Task.CompletedTask;
+        if (IsLoading || !_hasMorePages)
+        {
+            return;
+        }
+
+        _maxPages += 10;
+        _searchCts = new CancellationTokenSource();
+        await LoadAllPagesAsync(_searchCts.Token);
     }
 
     public async Task ToggleFavoriteAsync(ImagePost post)
@@ -1010,6 +1018,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         Images.Clear();
         _nextPage = 1;
         _hasMorePages = true;
+        _maxPages = 10;
 
         await LoadAllPagesAsync(_searchCts.Token);
     }
@@ -1018,6 +1027,12 @@ public class MainWindowViewModel : INotifyPropertyChanged
     {
         while (_hasMorePages && !cancellationToken.IsCancellationRequested)
         {
+            if (_nextPage > _maxPages)
+            {
+                _hasMorePages = false;
+                break;
+            }
+
             await LoadNextPageAsync(cancellationToken);
             await Task.Yield();
         }
