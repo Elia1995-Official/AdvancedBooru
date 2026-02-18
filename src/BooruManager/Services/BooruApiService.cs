@@ -300,24 +300,24 @@ public class BooruApiService
             ?? post.Attribute("sample_url")?.Value
             ?? post.Attribute("file_url")?.Value
             ?? string.Empty;
-        var fullRaw = post.Attribute("sample_url")?.Value
-            ?? post.Attribute("file_url")?.Value
+        var fullRaw = post.Attribute("file_url")?.Value
+            ?? post.Attribute("sample_url")?.Value
             ?? previewRaw;
         var rating = post.Attribute("rating")?.Value ?? string.Empty;
         var tagsText = post.Attribute("tags")?.Value ?? string.Empty;
         var score = ParseInt(post.Attribute("score")?.Value);
         var createdAtUnix = ParseUnixTime(post.Attribute("created_at")?.Value);
         var tagGroups = BuildSingleTagGroup(tagsText);
-        var width = ParsePositiveInt(post.Attribute("sample_width")?.Value);
+        var width = ParsePositiveInt(post.Attribute("width")?.Value);
         if (width <= 0)
         {
-            width = ParsePositiveInt(post.Attribute("width")?.Value);
+            width = ParsePositiveInt(post.Attribute("sample_width")?.Value);
         }
 
-        var height = ParsePositiveInt(post.Attribute("sample_height")?.Value);
+        var height = ParsePositiveInt(post.Attribute("height")?.Value);
         if (height <= 0)
         {
-            height = ParsePositiveInt(post.Attribute("height")?.Value);
+            height = ParsePositiveInt(post.Attribute("sample_height")?.Value);
         }
 
         var preview = MakeAbsoluteGelbooruLikeUrl(baseUrl, previewRaw);
@@ -587,24 +587,24 @@ public class BooruApiService
                 ?? post.Attribute("sample_url")?.Value
                 ?? post.Attribute("file_url")?.Value
                 ?? string.Empty;
-            var fullRaw = post.Attribute("sample_url")?.Value
-                ?? post.Attribute("file_url")?.Value
+            var fullRaw = post.Attribute("file_url")?.Value
+                ?? post.Attribute("sample_url")?.Value
                 ?? previewRaw;
             var rating = post.Attribute("rating")?.Value ?? string.Empty;
             var tagsText = post.Attribute("tags")?.Value ?? string.Empty;
             var score = ParseInt(post.Attribute("score")?.Value);
             var createdAtUnix = ParseUnixTime(post.Attribute("created_at")?.Value);
             var tagGroups = BuildSingleTagGroup(tagsText);
-            var width = ParsePositiveInt(post.Attribute("sample_width")?.Value);
+            var width = ParsePositiveInt(post.Attribute("width")?.Value);
             if (width <= 0)
             {
-                width = ParsePositiveInt(post.Attribute("width")?.Value);
+                width = ParsePositiveInt(post.Attribute("sample_width")?.Value);
             }
 
-            var height = ParsePositiveInt(post.Attribute("sample_height")?.Value);
+            var height = ParsePositiveInt(post.Attribute("height")?.Value);
             if (height <= 0)
             {
-                height = ParsePositiveInt(post.Attribute("height")?.Value);
+                height = ParsePositiveInt(post.Attribute("sample_height")?.Value);
             }
 
             var preview = MakeAbsoluteGelbooruLikeUrl(baseUrl, previewRaw);
@@ -639,6 +639,28 @@ public class BooruApiService
     {
         return baseUrl.Contains("gelbooru.com", StringComparison.OrdinalIgnoreCase)
             || baseUrl.Contains(".booru.org", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsThumbsSubdomainSite(string baseUrl)
+    {
+        return baseUrl.Contains("allgirl.booru.org", StringComparison.OrdinalIgnoreCase)
+            || baseUrl.Contains("the-collection.booru.org", StringComparison.OrdinalIgnoreCase)
+            || baseUrl.Contains("tab.booru.org", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FixThumbsSubdomainUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return url;
+        }
+
+        if (url.Contains("://thumbs.", StringComparison.OrdinalIgnoreCase))
+        {
+            return url.Replace("://thumbs.", "://img.", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return url;
     }
 
     private static bool ShouldUseGelbooruHtmlFallback(string baseUrl, HttpStatusCode? statusCode)
@@ -909,6 +931,16 @@ public class BooruApiService
 
         var full = MakeAbsoluteGelbooruLikeUrl(baseUrl, WebUtility.HtmlDecode(fullRaw));
         var preview = MakeAbsoluteGelbooruLikeUrl(baseUrl, WebUtility.HtmlDecode(previewRaw));
+
+        if (IsThumbsSubdomainSite(baseUrl) && !string.IsNullOrWhiteSpace(full))
+        {
+            full = FixThumbsSubdomainUrl(full);
+            if (!string.IsNullOrWhiteSpace(preview) && preview.Contains("thumbs.", StringComparison.OrdinalIgnoreCase))
+            {
+                preview = FixThumbsSubdomainUrl(preview);
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(full))
         {
             return null;
