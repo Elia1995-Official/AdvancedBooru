@@ -18,8 +18,10 @@ public class ImageViewerWindow : Window
 {
     private const double ImagePadding = 8.0;
 
-    private readonly ImagePost _post;
+    private ImagePost _post;
     private readonly ImageLoaderService _imageLoader;
+    private readonly IReadOnlyList<ImagePost> _posts;
+    private int _currentIndex;
 
     private readonly Image _image;
     private readonly Canvas _contentCanvas;
@@ -37,12 +39,14 @@ public class ImageViewerWindow : Window
     private double _contentWidth;
     private double _contentHeight;
 
-    public ImageViewerWindow(ImagePost post, ImageLoaderService imageLoader)
+    public ImageViewerWindow(ImagePost post, ImageLoaderService imageLoader, IReadOnlyList<ImagePost> posts, int currentIndex)
     {
         _post = post;
         _imageLoader = imageLoader;
+        _posts = posts;
+        _currentIndex = currentIndex;
 
-        Title = $"{post.SourceSite} - {post.Id}";
+        Title = $"{post.SourceSite} - {post.Id} ({currentIndex + 1}/{posts.Count})";
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Width = 1000;
         Height = 720;
@@ -109,7 +113,13 @@ public class ImageViewerWindow : Window
 
         Content = root;
 
-        Opened += async (_, _) => await LoadImageAsync();
+        AddHandler(InputElement.KeyDownEvent, ImageViewerWindow_OnKeyDown, RoutingStrategies.Tunnel);
+        this.Focusable = true;
+        Opened += async (_, _) => 
+        {
+            await LoadImageAsync();
+            ((Control)this).Focus();
+        };
         SizeChanged += (_, _) =>
         {
             if (_bitmap is null)
@@ -369,5 +379,55 @@ public class ImageViewerWindow : Window
         var x = screen.WorkingArea.X + Math.Max(0, (screen.WorkingArea.Width - (int)Width) / 2);
         var y = screen.WorkingArea.Y + Math.Max(0, (screen.WorkingArea.Height - (int)Height) / 2);
         Position = new PixelPoint(x, y);
+    }
+
+    private async void ImageViewerWindow_OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        await HandleKeyDownAsync(e);
+    }
+
+    public async Task HandleKeyDownAsync(KeyEventArgs e)
+    {
+        if (_posts is null || _posts.Count == 0)
+        {
+            return;
+        }
+
+        int newIndex = _currentIndex;
+        if (e.Key == Key.Left)
+        {
+            newIndex = _currentIndex - 1;
+        }
+        else if (e.Key == Key.Right)
+        {
+            newIndex = _currentIndex + 1;
+        }
+        else
+        {
+            return;
+        }
+
+        if (newIndex < 0 || newIndex >= _posts.Count)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await NavigateToIndexAsync(newIndex);
+    }
+
+    private async Task NavigateToIndexAsync(int index)
+    {
+        var post = _posts[index];
+        post.FullImageUrl = post.FullImageUrl ?? post.PreviewUrl;
+        if (string.IsNullOrWhiteSpace(post.FullImageUrl))
+        {
+            return;
+        }
+
+        _currentIndex = index;
+        _post = post;
+        Title = $"{post.SourceSite} - {post.Id} ({index + 1}/{_posts.Count})";
+        await LoadImageAsync();
     }
 }

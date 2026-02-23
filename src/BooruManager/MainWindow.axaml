@@ -26,6 +26,7 @@
             <MenuItem Header="Aggiungi ai preferiti" CommandParameter="{Binding}" Click="ContextToggleFavorite_OnClick"/>
             <MenuItem Header="Nascondi post" CommandParameter="{Binding}" Click="ContextHidePost_OnClick"/>
             <MenuItem Header="Visualizza tag" CommandParameter="{Binding}" Click="ContextViewTags_OnClick"/>
+            <MenuItem Header="Ricerca immagini simili" CommandParameter="{Binding}" Click="ContextSearchSimilar_OnClick"/>
             <Separator/>
             <MenuItem Header="Copia URL post" CommandParameter="{Binding}" Click="ContextCopyPostUrl_OnClick"/>
             <MenuItem Header="Copia URL media" CommandParameter="{Binding}" Click="ContextCopyMediaUrl_OnClick"/>

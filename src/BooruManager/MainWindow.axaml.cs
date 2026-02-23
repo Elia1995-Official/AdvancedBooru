@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
@@ -19,6 +21,7 @@ public partial class MainWindow : Window
     private readonly ImageLoaderService _imageLoader = new();
     private readonly DispatcherTimer _slideshowTimer;
     private ImageViewerWindow? _slideshowWindow;
+    private ImageViewerWindow? _imageViewerWindow;
 
     public MainWindow()
     {
@@ -411,8 +414,29 @@ public partial class MainWindow : Window
             return;
         }
 
-        var imageWindow = new ImageViewerWindow(post, _imageLoader);
+        IReadOnlyList<ImagePost> posts;
+        int currentIndex;
+        if (DataContext is MainWindowViewModel vm2 && vm2.FavoriteImages.Contains(post))
+        {
+            posts = vm2.FavoriteImages;
+            currentIndex = vm2.FavoriteImages.IndexOf(post);
+        }
+        else if (DataContext is MainWindowViewModel vm3)
+        {
+            posts = vm3.Images;
+            currentIndex = vm3.Images.IndexOf(post);
+        }
+        else
+        {
+            posts = new List<ImagePost> { post };
+            currentIndex = 0;
+        }
+
+        var imageWindow = new ImageViewerWindow(post, _imageLoader, posts, currentIndex);
+        imageWindow.Closed += (_, _) => _imageViewerWindow = null;
         imageWindow.Show();
+        imageWindow.Activate();
+        _imageViewerWindow = imageWindow;
     }
 
     private static bool TryGetPostFromSender(object? sender, out ImagePost post)
@@ -545,6 +569,12 @@ public partial class MainWindow : Window
 
     private async void MainWindow_OnKeyDown(object? sender, KeyEventArgs e)
     {
+        if (_imageViewerWindow != null)
+        {
+            await _imageViewerWindow.HandleKeyDownAsync(e);
+            return;
+        }
+
         if (DataContext is not MainWindowViewModel vm)
         {
             return;
@@ -664,9 +694,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        var index = vm.Images.IndexOf(post);
         _slideshowWindow?.Close();
-        _slideshowWindow = new ImageViewerWindow(post, _imageLoader);
+        _slideshowWindow = new ImageViewerWindow(post, _imageLoader, vm.Images, index);
         _slideshowWindow.Show();
+        _slideshowWindow.Activate();
     }
 
     private void StopSlideshow()
@@ -708,6 +740,40 @@ public partial class MainWindow : Window
         }
 
         await vm.ToggleBlacklistForPostAsync(post);
+        e.Handled = true;
+    }
+
+    private async void ContextSearchSimilar_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (!TryGetPostFromSender(sender, out var post))
+        {
+            return;
+        }
+
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(post.Tags))
+        {
+            return;
+        }
+
+        var excludedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "artist", "author" };
+        var tags = post.Tags
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => !excludedTags.Contains(t))
+            .Take(5)
+            .ToList();
+
+        if (tags.Count == 0)
+        {
+            return;
+        }
+
+        vm.SearchText = string.Join(" ", tags);
+        vm.SearchCommand.Execute(null);
         e.Handled = true;
     }
 
