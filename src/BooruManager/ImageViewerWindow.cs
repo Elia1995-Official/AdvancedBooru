@@ -59,6 +59,7 @@ public class ImageViewerWindow : Window
         _image.PointerMoved += ImageOnPointerMoved;
         _image.PointerReleased += ImageOnPointerReleased;
         _image.PointerCaptureLost += (_, _) => StopPanning();
+        _image.DoubleTapped += ImageOnDoubleTapped;
 
         _contentCanvas = new Canvas();
         _contentCanvas.Children.Add(_image);
@@ -139,25 +140,26 @@ public class ImageViewerWindow : Window
         _image.Source = _bitmap;
         _statusText.Text = _post.FullImageUrl;
 
-        var targetWidth = _bitmap.PixelSize.Width * 0.6;
-        var targetHeight = _bitmap.PixelSize.Height * 0.6;
+        var aspectRatio = (double)_bitmap.PixelSize.Width / _bitmap.PixelSize.Height;
+        var targetWidth = Math.Min(1024, _bitmap.PixelSize.Width);
+        var targetHeight = targetWidth / aspectRatio;
 
         var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
         if (screen is not null)
         {
             var maxWidth = screen.WorkingArea.Width * 0.9;
             var maxHeight = screen.WorkingArea.Height * 0.9;
-            targetWidth = Math.Min(targetWidth, maxWidth);
-            targetHeight = Math.Min(targetHeight, maxHeight);
+            if (targetWidth > maxWidth || targetHeight > maxHeight)
+            {
+                var scale = Math.Min(maxWidth / targetWidth, maxHeight / targetHeight);
+                targetWidth = (int)(targetWidth * scale);
+                targetHeight = (int)(targetHeight * scale);
+            }
         }
 
-        targetWidth = Math.Min(targetWidth, _bitmap.PixelSize.Width + 40);
-        targetHeight = Math.Min(targetHeight, _bitmap.PixelSize.Height + 120);
+        Width = Math.Max(320, (int)targetWidth);
+        Height = Math.Max(240, (int)targetHeight + 120);
 
-        Width = Math.Max(320, targetWidth);
-        Height = Math.Max(240, targetHeight);
-
-        CenterOnCurrentScreen();
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
         await Dispatcher.UIThread.InvokeAsync(FitToWindow, DispatcherPriority.Background);
     }
@@ -312,6 +314,20 @@ public class ImageViewerWindow : Window
 
         _isPanning = false;
         _image.Cursor = new Cursor(StandardCursorType.Arrow);
+    }
+
+    private void ImageOnDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (WindowState == WindowState.FullScreen)
+        {
+            WindowState = WindowState.Normal;
+            FitToWindow();
+        }
+        else
+        {
+            WindowState = WindowState.FullScreen;
+        }
+        e.Handled = true;
     }
 
     private Vector ClampOffset(Vector offset)

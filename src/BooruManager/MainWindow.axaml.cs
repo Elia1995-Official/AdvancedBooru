@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using BooruManager.Models;
 using BooruManager.Services;
 using BooruManager.ViewModels;
@@ -15,12 +17,75 @@ namespace BooruManager;
 public partial class MainWindow : Window
 {
     private readonly ImageLoaderService _imageLoader = new();
+    private readonly DispatcherTimer _slideshowTimer;
+    private ImageViewerWindow? _slideshowWindow;
 
     public MainWindow()
     {
         InitializeComponent();
         Title = LocalizationService.Instance["AppTitle"];
         LocalizationService.Instance.LanguageChanged += () => Title = LocalizationService.Instance["AppTitle"];
+
+        _slideshowTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(3)
+        };
+        _slideshowTimer.Tick += SlideshowTimer_OnTick;
+
+        KeyDown += MainWindow_OnKeyDown;
+        DataContextChanged += MainWindow_DataContextChanged;
+    }
+
+    private void MainWindow_DataContextChanged(object? sender, EventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.RequestSettingsWindow -= OpenSettingsWindow;
+            vm.RequestSettingsWindow += OpenSettingsWindow;
+        }
+    }
+
+    private async void OpenSettingsWindow()
+    {
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        var settingsWindow = new SettingsWindow(
+            vm.DownloadFolder,
+            vm.SelectedLanguage,
+            vm.SlideshowIntervalSeconds,
+            vm.MaxConcurrentDownloads,
+            vm.RequestTimeoutSeconds,
+            vm.CardWidth,
+            vm.CardHeight,
+            vm.DownloadCreateSubfolders,
+            vm.DownloadPreserveFilenames,
+            vm.ConfirmBeforeDownload,
+            vm.ShowDownloadNotifications,
+            vm.AutoStartSlideshow,
+            vm.CustomUserAgent);
+
+        await settingsWindow.ShowDialog(this);
+
+        if (settingsWindow.SettingsChanged)
+        {
+            vm.ApplySettings(
+                settingsWindow.SelectedDownloadFolder,
+                settingsWindow.SelectedLanguage,
+                settingsWindow.SlideshowInterval,
+                settingsWindow.MaxConcurrentDownloads,
+                settingsWindow.RequestTimeout,
+                settingsWindow.CardWidth,
+                settingsWindow.CardHeight,
+                settingsWindow.CreateSubfolders,
+                settingsWindow.PreserveFilenames,
+                settingsWindow.ConfirmDownload,
+                settingsWindow.ShowNotifications,
+                settingsWindow.AutoStartSlideshow,
+                settingsWindow.CustomUserAgent);
+        }
     }
 
     private void InitializeComponent()
@@ -471,6 +536,179 @@ public partial class MainWindow : Window
     private void CheckUpdatesButton_OnClick(object? sender, RoutedEventArgs e)
     {
         Program.CheckForUpdates();
+    }
+
+    private void SettingsButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        OpenSettingsWindow();
+    }
+
+    private async void MainWindow_OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case Key.Right:
+                if (vm.SlideshowMode || e.KeyModifiers.HasFlag(KeyModifiers.Control))
+                {
+                    await vm.NavigateNextAsync();
+                    e.Handled = true;
+                }
+                break;
+            case Key.Left:
+                if (vm.SlideshowMode || e.KeyModifiers.HasFlag(KeyModifiers.Control))
+                {
+                    await vm.NavigatePreviousAsync();
+                    e.Handled = true;
+                }
+                break;
+            case Key.Escape:
+                if (vm.SlideshowMode)
+                {
+                    vm.SlideshowMode = false;
+                    StopSlideshow();
+                    e.Handled = true;
+                }
+                break;
+            case Key.Space:
+                if (vm.SlideshowMode)
+                {
+                    if (_slideshowTimer.IsEnabled)
+                    {
+                        _slideshowTimer.Stop();
+                    }
+                    else
+                    {
+                        _slideshowTimer.Start();
+                    }
+                    e.Handled = true;
+                }
+                break;
+            case Key.A when e.KeyModifiers == KeyModifiers.Control:
+                SelectAllPosts();
+                e.Handled = true;
+                break;
+            case Key.D when e.KeyModifiers == KeyModifiers.Control:
+                await vm.ClearSelectionAsync();
+                e.Handled = true;
+                break;
+            case Key.F5:
+                vm.SearchCommand.Execute(null);
+                e.Handled = true;
+                break;
+        }
+
+        vm.UpdateSelectedCount();
+    }
+
+    private void SelectAllPosts()
+    {
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        foreach (var post in vm.Images)
+        {
+            post.IsSelected = true;
+        }
+
+        vm.UpdateSelectedCount();
+    }
+
+    private async void SlideshowTimer_OnTick(object? sender, EventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        if (!vm.SlideshowMode)
+        {
+            StopSlideshow();
+            return;
+        }
+
+        _slideshowTimer.Interval = TimeSpan.FromSeconds(vm.SlideshowIntervalSeconds);
+
+        await vm.NavigateNextAsync();
+
+        var selectedPost = vm.Images.FirstOrDefault(p => p.IsSelected);
+        if (selectedPost != null)
+        {
+            await ShowPostInSlideshowAsync(selectedPost);
+        }
+    }
+
+    private async Task ShowPostInSlideshowAsync(ImagePost post)
+    {
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        await vm.EnsurePostMediaResolvedAsync(post);
+
+        post.FullImageUrl = PromoteLegacyBooruThumbUrl(post.FullImageUrl, post.SourceSite);
+        if (string.IsNullOrWhiteSpace(post.FullImageUrl))
+        {
+            post.FullImageUrl = PromoteLegacyBooruThumbUrl(post.PreviewUrl, post.SourceSite);
+        }
+
+        if (IsVideoUrl(post.FullImageUrl))
+        {
+            return;
+        }
+
+        _slideshowWindow?.Close();
+        _slideshowWindow = new ImageViewerWindow(post, _imageLoader);
+        _slideshowWindow.Show();
+    }
+
+    private void StopSlideshow()
+    {
+        _slideshowTimer.Stop();
+        _slideshowWindow?.Close();
+        _slideshowWindow = null;
+    }
+
+    public void StartSlideshow()
+    {
+        if (DataContext is not MainWindowViewModel vm || vm.Images.Count == 0)
+        {
+            return;
+        }
+
+        vm.SlideshowMode = true;
+        _slideshowTimer.Interval = TimeSpan.FromSeconds(vm.SlideshowIntervalSeconds);
+        _slideshowTimer.Start();
+
+        var firstPost = vm.Images.FirstOrDefault();
+        if (firstPost != null)
+        {
+            firstPost.IsSelected = true;
+            _ = ShowPostInSlideshowAsync(firstPost);
+        }
+    }
+
+    private async void ContextHidePost_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (!TryGetPostFromSender(sender, out var post))
+        {
+            return;
+        }
+
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        await vm.ToggleBlacklistForPostAsync(post);
+        e.Handled = true;
     }
 
     private async Task CopyToClipboardAsync(string text)

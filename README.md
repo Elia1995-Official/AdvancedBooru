@@ -12,7 +12,7 @@ Desktop Booru browser for Windows, Linux, and macOS built with Avalonia.
 
 ### Filtering & Sorting
 - **Sort by**: Date, Size, Votes
-- **Media type**: All, Static images, Animated, Videos, WebM, MP4
+- **Media type**: Images, Animated images, Videos
 - **Size range**: Large, Medium, Small
 - **Rating filters**: Safe, Questionable, Adult
 - **Local filters**: Minimum score, dimensions, required/excluded tags
@@ -22,12 +22,30 @@ Desktop Booru browser for Windows, Linux, and macOS built with Avalonia.
 - Card-based grid with lazy thumbnail loading
 - Favorites tab with persistent storage
 - Single-click selection, CTRL+click for multi-select
-- Context menu: View, Favorite, Tags, Copy URLs
+- Context menu: View, Favorite, Tags, Copy URLs, Hide
 
-### Tag Selector
-- Tags grouped by category
-- Multi-select support
-- Custom window with scrolling
+### Batch Operations
+- Multi-select posts with CTRL+click
+- Download all selected posts to local folder
+- Hide/unhide posts (blacklist feature)
+- Clear all selections
+
+### Slideshow Mode
+- Automatic image slideshow with configurable interval
+- Keyboard navigation: Left/Right arrows, Space to pause, ESC to exit
+- Fullscreen viewing experience
+
+### Keyboard Shortcuts
+- `Right/Left arrows`: Navigate between posts (with CTRL or in slideshow mode)
+- `Ctrl+A`: Select all visible posts
+- `Ctrl+D`: Clear selection
+- `Space`: Pause/resume slideshow
+- `ESC`: Exit slideshow mode
+- `F5`: Refresh search
+
+### Tag Collection
+- Automatically collects unique tags from visible posts
+- Tag suggestions while searching
 
 ### Viewers
 - **Image viewer**: Zoom, pan, fit-to-window
@@ -40,7 +58,16 @@ Desktop Booru browser for Windows, Linux, and macOS built with Avalonia.
 
 ### Updates & Storage
 - Built-in update checker
-- Settings persisted: credentials, favorites, filters, search history
+- Settings persisted: credentials, favorites, filters, search history, blacklist
+
+### Settings
+- **Download folder**: Choose where to save downloaded images
+- **Subfolders**: Option to create timestamped subfolders for each download
+- **Filenames**: Preserve original filenames or generate custom ones
+- **Slideshow**: Configurable interval, auto-start option
+- **UI**: Customize card width and height
+- **Advanced**: Request timeout, custom user agent
+- **Language**: 8 languages supported (EN, IT, ES, FR, DE, PT, JA, ZH)
 
 ## Requirements
 

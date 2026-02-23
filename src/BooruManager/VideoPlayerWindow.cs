@@ -39,6 +39,7 @@ public class VideoPlayerWindow : Window
 
     private readonly CancellationTokenSource _windowCts = new();
     private CancellationTokenSource? _playbackCts;
+    private int _audioPreviewRequestId;
     private Task? _playbackTask;
     private Process? _audioProcess;
     private readonly SemaphoreSlim _playbackSwitchGate = new(1, 1);
@@ -46,6 +47,7 @@ public class VideoPlayerWindow : Window
     private bool _isPaused;
     private bool _isLoaded;
     private bool _isScrubbing;
+    private bool _playbackNeedsResync;
     private bool _resumeAfterScrub;
     private bool _isInternalSliderUpdate;
     private bool _isMuted;
@@ -231,23 +233,32 @@ public class VideoPlayerWindow : Window
     {
         _windowCts.Cancel();
         _windowCts.Dispose();
+        CancelPendingAudioPreview();
         StopAudioPlayback();
         CancelPlayback();
     }
 
-    private void PlayPauseButtonOnClick(object? sender, EventArgs e)
+    private async void PlayPauseButtonOnClick(object? sender, EventArgs e)
     {
         _isPaused = !_isPaused;
         _playPauseButton.Content = _isPaused ? "Play" : "Pause";
 
         if (_isPaused)
         {
+            CancelPendingAudioPreview();
             StopAudioPlayback();
+            return;
         }
-        else
+
+        CancelPendingAudioPreview();
+
+        if (_playbackNeedsResync || _playbackTask is null)
         {
-            StartAudioPlaybackAtCurrentPosition();
+            await StartPlaybackFromAsync(FrameIndexToSeconds(_currentFrameIndex));
+            return;
         }
+
+        StartAudioPlaybackAtCurrentPosition();
     }
 
     private void MuteButtonOnClick(object? sender, EventArgs e)
@@ -299,6 +310,7 @@ public class VideoPlayerWindow : Window
 
         if (_isMuted || _volume <= 0)
         {
+            CancelPendingAudioPreview();
             StopAudioPlayback();
         }
         else
@@ -411,6 +423,7 @@ public class VideoPlayerWindow : Window
             RenderFrame(targetFrameIndex, updateTimeline: true);
             var targetSeconds = FrameIndexToSeconds(targetFrameIndex);
 
+            CancelPendingAudioPreview();
             StopAudioPlayback();
             if (!_isPaused)
             {
@@ -420,6 +433,7 @@ public class VideoPlayerWindow : Window
             _playbackCts = CancellationTokenSource.CreateLinkedTokenSource(_windowCts.Token);
             var ct = _playbackCts.Token;
             _playbackTask = Task.Run(() => PlaybackLoopAsync(targetFrameIndex, ct), ct);
+            _playbackNeedsResync = false;
         }
         finally
         {
@@ -534,6 +548,7 @@ public class VideoPlayerWindow : Window
 
         _currentTimeText.Text = FormatTime(e.NewValue);
         RenderFrame(TimeToFrameIndex(e.NewValue), updateTimeline: false);
+        QueueAudioFramePreview();
     }
 
     private void TimelineSliderOnPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -549,6 +564,7 @@ public class VideoPlayerWindow : Window
             _resumeAfterScrub = !_isPaused;
             _isPaused = true;
             _playPauseButton.Content = "Play";
+            CancelPendingAudioPreview();
             StopAudioPlayback();
         }
     }
@@ -591,12 +607,21 @@ public class VideoPlayerWindow : Window
             _playPauseButton.Content = "Pause";
             StartAudioPlaybackAtCurrentPosition();
         }
+        else
+        {
+            QueueAudioFramePreview();
+        }
 
         _resumeAfterScrub = false;
     }
 
     private async void OnKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Handled)
+        {
+            return;
+        }
+
         if (_frames is not { Count: > 0 })
         {
             return;
@@ -618,6 +643,11 @@ public class VideoPlayerWindow : Window
 
     private async void TimelineSliderOnKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Handled)
+        {
+            return;
+        }
+
         if (e.Key == Key.Right)
         {
             if (_frames is { Count: > 0 })
@@ -640,21 +670,23 @@ public class VideoPlayerWindow : Window
         }
     }
 
-    private async Task StepFrameAsync(int delta)
+    private Task StepFrameAsync(int delta)
     {
         if (_frames is not { Count: > 0 })
         {
-            return;
+            return Task.CompletedTask;
         }
 
         _isPaused = true;
         _playPauseButton.Content = "Play";
+        CancelPendingAudioPreview();
         StopAudioPlayback();
 
         var targetIndex = Math.Clamp(_currentFrameIndex + delta, 0, _frames.Count - 1);
         RenderFrame(targetIndex, updateTimeline: true);
-        await StartPlaybackFromAsync(FrameIndexToSeconds(targetIndex));
-        PlayAudioFramePreviewAtCurrentPosition();
+        _playbackNeedsResync = true;
+        QueueAudioFramePreview();
+        return Task.CompletedTask;
     }
 
     private int TimeToFrameIndex(double positionSeconds)
@@ -707,18 +739,48 @@ public class VideoPlayerWindow : Window
         StartAudioPlayback(FrameIndexToSeconds(_currentFrameIndex));
     }
 
-    private void PlayAudioFramePreviewAtCurrentPosition()
+    private void QueueAudioFramePreview()
     {
-        var durationSeconds = Math.Max(0.08, 2.0 / Math.Max(1.0, _frameRate));
-        StartAudioPlayback(FrameIndexToSeconds(_currentFrameIndex), durationSeconds);
+        if (!_isPaused || _isMuted || _volume <= 0 || _frames is not { Count: > 0 })
+        {
+            return;
+        }
+
+        var requestId = Interlocked.Increment(ref _audioPreviewRequestId);
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(90);
+
+            if (requestId != Volatile.Read(ref _audioPreviewRequestId) || _windowCts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var positionSeconds = Math.Max(0, FrameIndexToSeconds(_currentFrameIndex) - 0.05);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (requestId != Volatile.Read(ref _audioPreviewRequestId)
+                    || !_isPaused
+                    || _isMuted
+                    || _volume <= 0
+                    || _windowCts.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                // Keep preview running until next scrub step so it is actually audible.
+                StartAudioPlayback(positionSeconds, clipDurationSeconds: null, monitorFailures: false);
+            });
+        });
     }
 
     private void StartAudioPlayback(double positionSeconds)
     {
-        StartAudioPlayback(positionSeconds, null);
+        StartAudioPlayback(positionSeconds, null, monitorFailures: true);
     }
 
-    private void StartAudioPlayback(double positionSeconds, double? clipDurationSeconds)
+    private void StartAudioPlayback(double positionSeconds, double? clipDurationSeconds, bool monitorFailures)
     {
         if (_isMuted || _volume <= 0)
         {
@@ -754,28 +816,13 @@ public class VideoPlayerWindow : Window
 
             psi.ArgumentList.Add("-volume");
             psi.ArgumentList.Add(((int)Math.Round(Math.Clamp(_volume, 0, 1) * 100)).ToString(CultureInfo.InvariantCulture));
-
-            var hasAudioFilter = false;
-            if (positionSeconds > 0 || clipDurationSeconds is > 0)
+            if (positionSeconds > 0)
             {
-                var startText = Math.Max(0, positionSeconds).ToString("0.###", CultureInfo.InvariantCulture);
-                string filter;
-                if (clipDurationSeconds is > 0)
-                {
-                    var durationText = clipDurationSeconds.Value.ToString("0.###", CultureInfo.InvariantCulture);
-                    filter = $"atrim=start={startText}:duration={durationText},asetpts=PTS-STARTPTS";
-                }
-                else
-                {
-                    filter = $"atrim=start={startText},asetpts=PTS-STARTPTS";
-                }
-
-                psi.ArgumentList.Add("-af");
-                psi.ArgumentList.Add(filter);
-                hasAudioFilter = true;
+                psi.ArgumentList.Add("-ss");
+                psi.ArgumentList.Add(positionSeconds.ToString("0.###", CultureInfo.InvariantCulture));
             }
 
-            if (!hasAudioFilter && clipDurationSeconds is > 0)
+            if (clipDurationSeconds is > 0)
             {
                 psi.ArgumentList.Add("-t");
                 psi.ArgumentList.Add(clipDurationSeconds.Value.ToString("0.###", CultureInfo.InvariantCulture));
@@ -787,7 +834,7 @@ public class VideoPlayerWindow : Window
             {
                 var process = Process.Start(psi);
                 _audioProcess = process;
-                if (process is not null)
+                if (process is not null && monitorFailures)
                 {
                     MonitorAudioProcess(process);
                 }
@@ -798,6 +845,11 @@ public class VideoPlayerWindow : Window
                 _statusText.Text = "Unable to start audio process (ffplay).";
             }
         }
+    }
+
+    private void CancelPendingAudioPreview()
+    {
+        Interlocked.Increment(ref _audioPreviewRequestId);
     }
 
     private void MonitorAudioProcess(Process process)

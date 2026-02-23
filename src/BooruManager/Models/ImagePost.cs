@@ -16,6 +16,9 @@ public class ImagePost : INotifyPropertyChanged
     private bool _isSelected;
     private int _width;
     private int _height;
+    private bool _isViewed;
+    private bool _isDuplicate;
+    private bool _hasNote;
 
     public string Id { get; set; } = string.Empty;
     public string SourceSite { get; set; } = string.Empty;
@@ -26,8 +29,11 @@ public class ImagePost : INotifyPropertyChanged
     public string Tags { get; set; } = string.Empty;
     public int Score { get; set; }
     public long CreatedAtUnix { get; set; }
+    public string? Md5Hash { get; set; }
+    
     [JsonIgnore]
     public Dictionary<string, List<string>> TagGroups { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    
     public int Width
     {
         get => _width;
@@ -124,12 +130,55 @@ public class ImagePost : INotifyPropertyChanged
         }
     }
 
+    public bool IsViewed
+    {
+        get => _isViewed;
+        set
+        {
+            if (_isViewed == value) return;
+            _isViewed = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ViewedOpacity));
+        }
+    }
+
+    public bool IsDuplicate
+    {
+        get => _isDuplicate;
+        set
+        {
+            if (_isDuplicate == value) return;
+            _isDuplicate = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(DuplicateIndicator));
+        }
+    }
+
+    public bool HasNote
+    {
+        get => _hasNote;
+        set
+        {
+            if (_hasNote == value) return;
+            _hasNote = value;
+            OnPropertyChanged();
+        }
+    }
+
     [JsonIgnore]
     public MaterialIconKind FavoriteIconKind => IsFavorite ? MaterialIconKind.Heart : MaterialIconKind.HeartOutline;
+    
     [JsonIgnore]
     public string SummaryLine => $"{(SourceSite ?? string.Empty).ToUpperInvariant()} • {MediaTypeDisplay} • {RatingDisplay}{PixelSizeSegment} • #{Id}";
+    
     [JsonIgnore]
     public string TagsDisplay => string.IsNullOrWhiteSpace(Tags) ? "(no tags)" : Tags.Replace('_', ' ');
+    
+    [JsonIgnore]
+    public double ViewedOpacity => IsViewed ? 0.6 : 1.0;
+    
+    [JsonIgnore]
+    public string DuplicateIndicator => IsDuplicate ? " [DUPLICATE]" : string.Empty;
 
     [JsonIgnore]
     private string MediaTypeDisplay
