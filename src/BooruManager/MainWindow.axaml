@@ -27,6 +27,8 @@
             <MenuItem Header="Nascondi post" CommandParameter="{Binding}" Click="ContextHidePost_OnClick"/>
             <MenuItem Header="Visualizza tag" CommandParameter="{Binding}" Click="ContextViewTags_OnClick"/>
             <MenuItem Header="Ricerca immagini simili" CommandParameter="{Binding}" Click="ContextSearchSimilar_OnClick"/>
+            <MenuItem Header="Salva metadata (JSON)" CommandParameter="{Binding}" Click="ContextSaveMetadata_OnClick"/>
+            <MenuItem Header="Copia Markdown" CommandParameter="{Binding}" Click="ContextCopyMarkdown_OnClick"/>
             <Separator/>
             <MenuItem Header="Copia URL post" CommandParameter="{Binding}" Click="ContextCopyPostUrl_OnClick"/>
             <MenuItem Header="Copia URL media" CommandParameter="{Binding}" Click="ContextCopyMediaUrl_OnClick"/>
@@ -230,6 +232,13 @@
         </StackPanel>
 
         <Button Content="{Binding LoginButtonText}" Command="{Binding LoginToggleCommand}" Margin="0,4,0,0"/>
+        <TextBlock Text="Sync favorites user" FontSize="12" Foreground="#8FB0CF" Margin="0,4,0,0"/>
+        <TextBox Text="{Binding SyncUsername}" Watermark="username to sync"/>
+        <Button Content="Sync favorites from account"
+                Command="{Binding SyncFavoritesCommand}"
+                IsEnabled="{Binding CanSyncFavorites}"
+                Margin="0,4,0,0"/>
+        <TextBlock Text="{Binding LastFavoritesSyncText}" FontSize="11" Foreground="#8FB0CF"/>
 
         <Separator Margin="0,8,0,4"/>
 
@@ -280,17 +289,171 @@
           </TabItem>
 
           <TabItem Header="{Binding FavoritesTabTitle}">
-            <ScrollViewer VerticalScrollBarVisibility="Visible"
-                          HorizontalScrollBarVisibility="Disabled"
-                          AllowAutoHide="False">
-              <ItemsControl ItemsSource="{Binding FavoriteImages}" ItemTemplate="{StaticResource PostCardTemplate}">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <WrapPanel Orientation="Horizontal" ItemWidth="368" ItemHeight="424"/>
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-              </ItemsControl>
-            </ScrollViewer>
+            <Grid RowDefinitions="Auto,*" Margin="0,0,0,2">
+              <Border Grid.Row="0" Margin="4,2,4,8" Padding="8" Background="#152132" CornerRadius="8">
+                <StackPanel Spacing="8">
+                  <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Button Content="Sync now"
+                            Command="{Binding SyncFavoritesCommand}"
+                            IsEnabled="{Binding CanSyncFavorites}"/>
+                    <Button Content="Clear local for selected booru"
+                            Command="{Binding ClearLocalFavoritesForSiteCommand}"/>
+                    <TextBlock Text="{Binding LastFavoritesSyncText}"
+                               VerticalAlignment="Center"
+                               Foreground="#8FB0CF"/>
+                  </StackPanel>
+                  <ItemsControl ItemsSource="{Binding FavoriteSourceFilters}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"/>
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <CheckBox Content="{Binding DisplayText}" IsChecked="{Binding IsSelected}" Margin="0,0,10,4"/>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock Text="Owners" Foreground="#8FB0CF" Margin="0,4,0,0"/>
+                  <ItemsControl ItemsSource="{Binding FavoriteOwnerFilters}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"/>
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <CheckBox Content="{Binding Label}" IsChecked="{Binding IsSelected}" Margin="0,0,10,4"/>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock Text="Tag filter" Foreground="#8FB0CF" Margin="0,4,0,0"/>
+                  <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,2">
+                    <TextBox Grid.Column="0"
+                             Text="{Binding FavoriteTagFilterText}"
+                             Watermark="e.g. blue_eyes solo -gore"/>
+                    <Button Grid.Column="1"
+                            Content="Clear"
+                            Command="{Binding ClearFavoriteTagFilterCommand}"
+                            Margin="8,0,0,0"/>
+                  </Grid>
+                </StackPanel>
+              </Border>
+              <ScrollViewer Grid.Row="1"
+                            VerticalScrollBarVisibility="Visible"
+                            HorizontalScrollBarVisibility="Disabled"
+                            AllowAutoHide="False">
+                <ItemsControl ItemsSource="{Binding FilteredFavoriteImages}" ItemTemplate="{StaticResource PostCardTemplate}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel Orientation="Horizontal" ItemWidth="368" ItemHeight="424"/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                </ItemsControl>
+              </ScrollViewer>
+            </Grid>
+          </TabItem>
+
+          <TabItem Header="Collections">
+            <Grid ColumnDefinitions="320,*" RowDefinitions="Auto,*" Margin="4">
+              <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                <TextBox Width="260"
+                         Watermark="Collection name"
+                         Text="{Binding NewCollectionName}"/>
+                <Button Content="Create" Command="{Binding CreateCollectionCommand}"/>
+                <Button Content="Show all" Command="{Binding ClearCollectionFilterCommand}"/>
+              </StackPanel>
+
+              <Border Grid.Row="1" Grid.Column="0" Background="#101B2C" CornerRadius="8" Padding="8" Margin="0,0,8,0">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Saved collections" Foreground="#8FB0CF"/>
+                  <ListBox ItemsSource="{Binding Collections}" SelectedItem="{Binding SelectedCollection}">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                          <TextBlock Text="{Binding Count}" Foreground="#8FB0CF"/>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                </StackPanel>
+              </Border>
+
+              <Border Grid.Row="1" Grid.Column="1" Background="#101B2C" CornerRadius="8" Padding="10">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Manage selection in current collection" Foreground="#8FB0CF"/>
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Add selected" Command="{Binding AddToCollectionCommand}"/>
+                    <Button Content="Remove selected" Command="{Binding RemoveFromCollectionCommand}"/>
+                    <Button Content="Delete collection" Command="{Binding DeleteCollectionCommand}"/>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </Grid>
+          </TabItem>
+
+          <TabItem Header="Insights">
+            <Grid RowDefinitions="Auto,Auto,*" Margin="4">
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                <Button Content="Refresh insights" Command="{Binding RefreshInsightsCommand}"/>
+                <TextBlock Text="{Binding InsightsSummary}" VerticalAlignment="Center" Foreground="#8FB0CF"/>
+              </StackPanel>
+
+              <Grid Grid.Row="1" ColumnDefinitions="*,*" Margin="0,0,0,8">
+                <Border Grid.Column="0" Background="#101B2C" CornerRadius="8" Padding="8" Margin="0,0,4,0">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Queue selected" Command="{Binding AddToDownloadQueueCommand}"/>
+                    <Button Content="Pause/Resume queue" Command="{Binding PauseDownloadQueueCommand}"/>
+                    <Button Content="Clear queue" Command="{Binding ClearDownloadQueueCommand}"/>
+                  </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Background="#101B2C" CornerRadius="8" Padding="8" Margin="4,0,0,0">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding ViewedCount, StringFormat=Viewed posts: {0}}"
+                               VerticalAlignment="Center"
+                               Foreground="#8FB0CF"/>
+                    <Button Content="Clear viewed" Command="{Binding ClearViewedHistoryCommand}"/>
+                  </StackPanel>
+                </Border>
+              </Grid>
+
+              <Grid Grid.Row="2" ColumnDefinitions="*,*" Margin="0,0,0,2">
+                <Border Grid.Column="0" Background="#101B2C" CornerRadius="8" Padding="8" Margin="0,0,4,0">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="Top tags in current visible results" Foreground="#8FB0CF"/>
+                    <ListBox ItemsSource="{Binding TagStatistics}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate>
+                          <Grid ColumnDefinitions="*,Auto,Auto" DoubleTapped="InsightsTag_OnDoubleTapped">
+                            <TextBlock Grid.Column="0" Text="{Binding Tag}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Count}" Margin="8,0,0,0"/>
+                            <TextBlock Grid.Column="2" Text="{Binding Percentage, StringFormat={}{0}%}" Margin="8,0,0,0" Foreground="#8FB0CF"/>
+                          </Grid>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                  </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1" Background="#101B2C" CornerRadius="8" Padding="8" Margin="4,0,0,0">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="Download queue" Foreground="#8FB0CF"/>
+                    <ListBox ItemsSource="{Binding DownloadQueueItems}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate>
+                          <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0" Text="{Binding Status}" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="{Binding DestinationPath}" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Grid.Column="2" Text="{Binding Progress, StringFormat={}{0:0}%}" Margin="8,0,0,0"/>
+                          </Grid>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                  </StackPanel>
+                </Border>
+              </Grid>
+            </Grid>
           </TabItem>
         </TabControl>
       </Border>

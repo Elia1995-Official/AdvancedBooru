@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace BooruManager.Models;
@@ -8,6 +9,11 @@ public class AppSettings
     public List<string> RecentSearches { get; set; } = new();
     public List<string> FavoritePostKeys { get; set; } = new();
     public List<ImagePost> FavoritePosts { get; set; } = new();
+    public List<SyncedFavoriteProfile> SyncedFavoriteProfiles { get; set; } = new();
+    public List<string> SelectedFavoriteOwnerKeys { get; set; } = new();
+    public List<string> FavoriteSourceFilterKeys { get; set; } = new();
+    public string FavoriteTagFilterText { get; set; } = string.Empty;
+    public DateTime? LastFavoritesSyncUtc { get; set; }
     public int ResultsPerPage { get; set; } = 40;
     public string SearchSortKey { get; set; } = "date_desc";
     public bool ShowFavoritesOnly { get; set; }

@@ -91,6 +91,9 @@ public class ImageViewerWindow : Window
         var fitButton = new Button { Content = "Fit", Width = 56 };
         fitButton.Click += (_, _) => FitToWindow();
 
+        var copyUrlButton = new Button { Content = "Copy URL", Width = 90 };
+        copyUrlButton.Click += async (_, _) => await CopyImageUrlAsync();
+
         var controls = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -100,6 +103,7 @@ public class ImageViewerWindow : Window
         controls.Children.Add(zoomOutButton);
         controls.Children.Add(zoomInButton);
         controls.Children.Add(fitButton);
+        controls.Children.Add(copyUrlButton);
         controls.Children.Add(_statusText);
 
         var root = new Grid
@@ -136,6 +140,29 @@ public class ImageViewerWindow : Window
             UpdateImageLayout();
             _scrollViewer.Offset = ClampOffset(_scrollViewer.Offset);
         };
+    }
+
+    private async Task CopyImageUrlAsync()
+    {
+        var top = TopLevel.GetTopLevel(this);
+        if (top?.Clipboard is null)
+        {
+            return;
+        }
+
+        var url = _post.FullImageUrl;
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            url = _post.PreviewUrl;
+        }
+
+        try
+        {
+            await top.Clipboard.SetTextAsync(url ?? string.Empty);
+        }
+        catch
+        {
+        }
     }
 
     private async Task LoadImageAsync()

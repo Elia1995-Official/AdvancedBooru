@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Text.Json;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -68,7 +70,9 @@ public partial class MainWindow : Window
             vm.ConfirmBeforeDownload,
             vm.ShowDownloadNotifications,
             vm.AutoStartSlideshow,
-            vm.CustomUserAgent);
+            vm.CustomUserAgent,
+            vm.ShowGridLines,
+            vm.DetectDuplicates);
 
         await settingsWindow.ShowDialog(this);
 
@@ -87,8 +91,97 @@ public partial class MainWindow : Window
                 settingsWindow.ConfirmDownload,
                 settingsWindow.ShowNotifications,
                 settingsWindow.AutoStartSlideshow,
-                settingsWindow.CustomUserAgent);
+                settingsWindow.CustomUserAgent,
+                settingsWindow.SelectedShowGridLines,
+                settingsWindow.SelectedDetectDuplicates);
         }
+    }
+
+    private async void ContextSaveMetadata_OnClick(object? sender, RoutedEventArgs e)
+    {
+        var selectedPosts = GetSelectedPosts();
+        if (selectedPosts.Count == 0)
+        {
+            if (!TryGetPostFromSender(sender, out var post))
+            {
+                return;
+            }
+
+            selectedPosts = new List<ImagePost> { post };
+        }
+
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        var downloadService = new DownloadService();
+        var destFolder = string.IsNullOrWhiteSpace(vm.DownloadFolder)
+            ? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)
+            : vm.DownloadFolder;
+
+        try
+        {
+            Directory.CreateDirectory(destFolder);
+            foreach (var post in selectedPosts)
+            {
+                var url = !string.IsNullOrWhiteSpace(post.FullImageUrl) ? post.FullImageUrl : post.PreviewUrl;
+                var baseName = downloadService.GenerateFileName(post.SourceSite, post.Id, url);
+                var jsonPath = Path.Combine(destFolder, baseName + ".json");
+
+                var payload = new
+                {
+                    post.Id,
+                    post.SourceSite,
+                    post.PostUrl,
+                    post.FullImageUrl,
+                    post.PreviewUrl,
+                    post.Tags,
+                    post.Width,
+                    post.Height,
+                    post.Score,
+                    post.Md5Hash
+                };
+
+                var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
+                await File.WriteAllTextAsync(jsonPath, json);
+            }
+
+            if (selectedPosts.Count == 1)
+            {
+                vm.StatusText = "Saved metadata";
+            }
+            else
+            {
+                vm.StatusText = $"Saved metadata for {selectedPosts.Count} posts";
+            }
+        }
+        catch (Exception)
+        {
+            vm.StatusText = "Failed to save metadata";
+        }
+
+        e.Handled = true;
+    }
+
+    private async void ContextCopyMarkdown_OnClick(object? sender, RoutedEventArgs e)
+    {
+        var selectedPosts = GetSelectedPosts();
+        if (selectedPosts.Count == 0)
+        {
+            if (!TryGetPostFromSender(sender, out var post))
+            {
+                return;
+            }
+
+            selectedPosts = new List<ImagePost> { post };
+        }
+
+        var lines = selectedPosts.Select(p =>
+            $"![{p.Id}]({(!string.IsNullOrWhiteSpace(p.FullImageUrl) ? p.FullImageUrl : p.PreviewUrl)})");
+        var markdown = string.Join(Environment.NewLine, lines);
+        await CopyToClipboardAsync(markdown);
+        e.Handled = true;
     }
 
     private void InitializeComponent()
@@ -137,6 +230,23 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    private void InsightsTag_OnDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is not Control control || control.DataContext is not TagStatistic stat)
+        {
+            return;
+        }
+
+        if (DataContext is not MainWindowViewModel vm || string.IsNullOrWhiteSpace(stat.Tag))
+        {
+            return;
+        }
+
+        vm.QuickTagSearchAppend(stat.Tag);
+        vm.StatusText = $"Added '{stat.Tag}' to search";
+        e.Handled = true;
+    }
+
     private async void PostCard_OnDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (!TryGetPostFromSender(sender, out var post))
@@ -178,7 +288,7 @@ public partial class MainWindow : Window
             image.IsSelected = false;
         }
 
-        foreach (var image in vm.FavoriteImages)
+        foreach (var image in vm.FilteredFavoriteImages)
         {
             image.IsSelected = false;
         }
@@ -195,7 +305,7 @@ public partial class MainWindow : Window
         var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var post in vm.Images.Where(p => p.IsSelected)
-                     .Concat(vm.FavoriteImages.Where(p => p.IsSelected)))
+                     .Concat(vm.FilteredFavoriteImages.Where(p => p.IsSelected)))
         {
             var key = $"{post.SourceSite.Trim().ToLowerInvariant()}::{post.Id.Trim()}";
             if (!seenKeys.Add(key))
@@ -416,10 +526,10 @@ public partial class MainWindow : Window
 
         IReadOnlyList<ImagePost> posts;
         int currentIndex;
-        if (DataContext is MainWindowViewModel vm2 && vm2.FavoriteImages.Contains(post))
+        if (DataContext is MainWindowViewModel vm2 && vm2.FilteredFavoriteImages.Contains(post))
         {
-            posts = vm2.FavoriteImages;
-            currentIndex = vm2.FavoriteImages.IndexOf(post);
+            posts = vm2.FilteredFavoriteImages;
+            currentIndex = vm2.FilteredFavoriteImages.IndexOf(post);
         }
         else if (DataContext is MainWindowViewModel vm3)
         {

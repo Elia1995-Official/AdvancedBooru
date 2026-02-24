@@ -22,6 +22,7 @@ public class BooruApiService
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 BooruManager/1.0";
 
     private readonly HttpClient _httpClient = new();
+    private readonly Dictionary<string, string> _gelbooruUserIdCache = new(StringComparer.OrdinalIgnoreCase);
 
     public BooruApiService()
     {
@@ -249,7 +250,8 @@ public class BooruApiService
             && !string.IsNullOrWhiteSpace(cred.Username)
             && !string.IsNullOrWhiteSpace(cred.Secret))
         {
-            urlBuilder.Append("&user_id=").Append(Uri.EscapeDataString(cred.Username));
+            var normalizedUserId = await ResolveGelbooruUserIdForApiAsync(cred.Username, cancellationToken);
+            urlBuilder.Append("&user_id=").Append(Uri.EscapeDataString(normalizedUserId));
             urlBuilder.Append("&api_key=").Append(Uri.EscapeDataString(cred.Secret));
         }
 
@@ -541,7 +543,8 @@ public class BooruApiService
             && !string.IsNullOrWhiteSpace(cred.Username)
             && !string.IsNullOrWhiteSpace(cred.Secret))
         {
-            urlBuilder.Append("&user_id=").Append(Uri.EscapeDataString(cred.Username));
+            var normalizedUserId = await ResolveGelbooruUserIdForApiAsync(cred.Username, cancellationToken);
+            urlBuilder.Append("&user_id=").Append(Uri.EscapeDataString(normalizedUserId));
             urlBuilder.Append("&api_key=").Append(Uri.EscapeDataString(cred.Secret));
         }
 
@@ -1060,6 +1063,69 @@ public class BooruApiService
         }
     }
 
+    public async Task<string?> ResolveGelbooruUserIdAsync(string username, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            return null;
+        }
+
+        var profileUrl = $"https://gelbooru.com/index.php?page=account&s=profile&uname={Uri.EscapeDataString(username.Trim())}";
+
+        try
+        {
+            using var response = await _httpClient.GetAsync(profileUrl, cancellationToken);
+            var resolvedUri = response.RequestMessage?.RequestUri;
+            if (resolvedUri is not null
+                && TryGetQueryParameter(resolvedUri, "id", out var idFromQuery)
+                && !string.IsNullOrWhiteSpace(idFromQuery)
+                && idFromQuery.All(char.IsDigit))
+            {
+                return idFromQuery;
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            var match = Regex.Match(body, @"page=favorites&s=view&id=(?<id>\d+)", RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                return match.Groups["id"].Value;
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
+    }
+
+    private async Task<string> ResolveGelbooruUserIdForApiAsync(string usernameOrId, CancellationToken cancellationToken)
+    {
+        var candidate = (usernameOrId ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return candidate;
+        }
+
+        if (candidate.All(char.IsDigit))
+        {
+            return candidate;
+        }
+
+        if (_gelbooruUserIdCache.TryGetValue(candidate, out var cached))
+        {
+            return cached;
+        }
+
+        var resolved = await ResolveGelbooruUserIdAsync(candidate, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(resolved))
+        {
+            _gelbooruUserIdCache[candidate] = resolved;
+            return resolved;
+        }
+
+        return candidate;
+    }
+
     private async Task<bool> ValidateE621Async(BooruCredentials credentials, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://e621.net/users.json?limit=1");
@@ -1085,6 +1151,37 @@ public class BooruApiService
 
         var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{credentials.Username}:{credentials.Secret}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", basic);
+    }
+
+    private static bool TryGetQueryParameter(Uri uri, string parameterName, out string value)
+    {
+        value = string.Empty;
+        var query = uri.Query;
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return false;
+        }
+
+        var trimmed = query.TrimStart('?');
+        foreach (var segment in trimmed.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pair = segment.Split('=', 2);
+            if (pair.Length != 2)
+            {
+                continue;
+            }
+
+            var key = Uri.UnescapeDataString(pair[0]);
+            if (!string.Equals(key, parameterName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            value = Uri.UnescapeDataString(pair[1]);
+            return true;
+        }
+
+        return false;
     }
 
     private static int GetInt(JsonElement element, string propertyName)

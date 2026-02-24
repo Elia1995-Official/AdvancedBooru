@@ -27,6 +27,8 @@ public class SettingsWindow : Window
     private readonly CheckBox _showNotificationsCheckBox;
     private readonly CheckBox _autoStartSlideshowCheckBox;
     private readonly TextBox _userAgentTextBox;
+    private readonly CheckBox _showGridLinesCheckBox;
+    private readonly CheckBox _detectDuplicatesCheckBox;
 
     public string? SelectedDownloadFolder { get; private set; }
     public string? SelectedLanguage { get; private set; }
@@ -43,6 +45,9 @@ public class SettingsWindow : Window
     public string CustomUserAgent { get; private set; } = string.Empty;
     public bool SettingsChanged { get; private set; }
 
+    public bool SelectedShowGridLines { get; private set; }
+    public bool SelectedDetectDuplicates { get; private set; }
+
     public SettingsWindow(
         string currentDownloadFolder,
         string currentLanguage,
@@ -56,7 +61,9 @@ public class SettingsWindow : Window
         bool confirmDownload,
         bool showNotifications,
         bool autoStartSlideshow,
-        string customUserAgent)
+        string customUserAgent,
+        bool showGridLines,
+        bool detectDuplicates)
     {
         Title = LocalizationService.Instance["SettingsWindowTitle"];
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -278,6 +285,14 @@ public class SettingsWindow : Window
         };
         uiSectionPanel.Children.Add(_cardHeightNumeric);
 
+        _showGridLinesCheckBox = new CheckBox
+        {
+            Content = LocalizationService.Instance["ShowGridLines"],
+            IsChecked = showGridLines,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        uiSectionPanel.Children.Add(_showGridLinesCheckBox);
+
         var uiSection = new Border
         {
             Background = new SolidColorBrush(Color.Parse("#1A2330")),
@@ -333,6 +348,14 @@ public class SettingsWindow : Window
             Margin = new Thickness(0, 4, 0, 0)
         };
         advancedSectionPanel.Children.Add(_userAgentTextBox);
+
+        _detectDuplicatesCheckBox = new CheckBox
+        {
+            Content = LocalizationService.Instance["DetectDuplicates"],
+            IsChecked = detectDuplicates,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        advancedSectionPanel.Children.Add(_detectDuplicatesCheckBox);
 
         var advancedSection = new Border
         {
@@ -448,6 +471,8 @@ public class SettingsWindow : Window
         ShowNotifications = _showNotificationsCheckBox.IsChecked ?? true;
         AutoStartSlideshow = _autoStartSlideshowCheckBox.IsChecked ?? false;
         CustomUserAgent = _userAgentTextBox.Text ?? string.Empty;
+        SelectedShowGridLines = _showGridLinesCheckBox.IsChecked ?? true;
+        SelectedDetectDuplicates = _detectDuplicatesCheckBox.IsChecked ?? true;
         SettingsChanged = true;
 
         Close();

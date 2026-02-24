@@ -39,6 +39,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private const string SizeFilterLargeKey = "size_large";
     private const string SizeFilterMediumKey = "size_medium";
     private const string SizeFilterSmallKey = "size_small";
+    private const string LocalFavoriteOwnerKey = "__local__";
 
     private static readonly IReadOnlyList<ResultSortOption> SortOptionsInternal = new[]
     {
@@ -90,6 +91,10 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private readonly HashSet<string> _loadedPostKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _favoriteKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ImagePost> _favoritePostsByKey = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, SyncedFavoriteProfile> _syncedFavoriteProfilesByKey = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _syncedFavoriteKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _selectedFavoriteOwnerKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _selectedFavoriteSourceKeys = new(StringComparer.OrdinalIgnoreCase);
 
     private AppSettings _settings = new();
     private CancellationTokenSource? _searchCts;
@@ -124,11 +129,22 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private bool _isInitialLoad = true;
     private long _previewQueueSequence;
     private string _selectedLanguage = "en";
+    private bool _isSyncingFavorites;
+    private DateTime? _lastFavoritesSyncUtc;
+    private string _newCollectionName = string.Empty;
+    private string _syncUsername = string.Empty;
+    private string _favoriteTagFilterText = string.Empty;
+    private string[] _favoriteTagIncludeTokens = Array.Empty<string>();
+    private string[] _favoriteTagExcludeTokens = Array.Empty<string>();
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<ImagePost> Images { get; } = new();
     public ObservableCollection<ImagePost> FavoriteImages { get; } = new();
+    public ObservableCollection<ImagePost> VisibleFavoriteImages { get; } = new();
+    public ObservableCollection<ImagePost> FilteredFavoriteImages { get; } = new();
+    public ObservableCollection<FavoriteOwnerFilterOption> FavoriteOwnerFilters { get; } = new();
+    public ObservableCollection<FavoriteSourceFilterOption> FavoriteSourceFilters { get; } = new();
     public ObservableCollection<string> RecentSearches { get; } = new();
 
     public IReadOnlyList<BooruSite> Sites { get; } = Enum.GetValues<BooruSite>();
@@ -235,6 +251,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(UsesApiKey));
             OnPropertyChanged(nameof(ShowRatingFilters));
             OnPropertyChanged(nameof(SecretLabel));
+            OnPropertyChanged(nameof(CanSyncFavorites));
 
             if (value == BooruSite.Safebooru)
             {
@@ -528,6 +545,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(ShowCredentialInputs));
             OnPropertyChanged(nameof(ShowLoggedInInfo));
             OnPropertyChanged(nameof(LoggedInAsText));
+            OnPropertyChanged(nameof(CanSyncFavorites));
         }
     }
 
@@ -549,7 +567,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
     public string StatusText
     {
         get => _statusText;
-        private set
+        set
         {
             if (_statusText == value)
             {
@@ -562,8 +580,9 @@ public class MainWindowViewModel : INotifyPropertyChanged
     }
 
     public int FavoritesCount => _favoritePostsByKey.Count;
-    public string FavoritesSummary => $"Only favorites ({FavoritesCount})";
-    public string FavoritesTabTitle => $"Favorites ({FavoriteImages.Count})";
+    public int SyncedFavoritesCount => _syncedFavoriteProfilesByKey.Values.Sum(x => x.FavoritePosts.Count);
+    public string FavoritesSummary => $"Only favorites ({FavoritesCount + SyncedFavoritesCount})";
+    public string FavoritesTabTitle => $"Favorites ({FilteredFavoriteImages.Count})";
 
     public bool UsesApiKey => SelectedSite is BooruSite.E621 or BooruSite.Danbooru or BooruSite.Gelbooru;
     public bool ShowRatingFilters => SelectedSite is not BooruSite.Safebooru;
@@ -572,6 +591,80 @@ public class MainWindowViewModel : INotifyPropertyChanged
     public bool ShowCredentialInputs => !IsLoggedIn;
     public bool ShowLoggedInInfo => IsLoggedIn;
     public string LoggedInAsText => IsLoggedIn ? $"Logged in as: {Username}" : string.Empty;
+    public bool CanSyncFavorites => !IsSyncingFavorites
+        && IsFavoriteSyncSupported(SelectedSite)
+        && !string.IsNullOrWhiteSpace(SyncUsername);
+    public bool IsSyncingFavorites
+    {
+        get => _isSyncingFavorites;
+        private set
+        {
+            if (_isSyncingFavorites == value)
+            {
+                return;
+            }
+
+            _isSyncingFavorites = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanSyncFavorites));
+        }
+    }
+
+    public string LastFavoritesSyncText => _lastFavoritesSyncUtc is { } value
+        ? $"Last sync: {value.ToLocalTime():yyyy-MM-dd HH:mm:ss}"
+        : "Last sync: never";
+
+    public string SyncUsername
+    {
+        get => _syncUsername;
+        set
+        {
+            var normalized = value?.Trim() ?? string.Empty;
+            if (string.Equals(_syncUsername, normalized, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _syncUsername = normalized;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanSyncFavorites));
+        }
+    }
+
+    public string NewCollectionName
+    {
+        get => _newCollectionName;
+        set
+        {
+            var normalized = value?.Trim() ?? string.Empty;
+            if (string.Equals(_newCollectionName, normalized, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _newCollectionName = normalized;
+            OnPropertyChanged();
+        }
+    }
+
+    public string FavoriteTagFilterText
+    {
+        get => _favoriteTagFilterText;
+        set
+        {
+            var normalized = value?.Trim() ?? string.Empty;
+            if (string.Equals(_favoriteTagFilterText, normalized, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _favoriteTagFilterText = normalized;
+            RebuildFavoriteTagFilterTokens();
+            OnPropertyChanged();
+            ApplyFavoriteSourceFilter();
+            SaveSettingsInBackground();
+        }
+    }
 
     private int _selectedPostsCount;
     public int SelectedPostsCount
@@ -859,6 +952,18 @@ public class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    private bool _showGridLines = true;
+    public bool ShowGridLines
+    {
+        get => _showGridLines;
+        set
+        {
+            if (_showGridLines == value) return;
+            _showGridLines = value;
+            OnPropertyChanged();
+        }
+    }
+
     private bool _detectDuplicates = true;
     public bool DetectDuplicates
     {
@@ -904,6 +1009,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             if (_viewedCount == value) return;
             _viewedCount = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(InsightsSummary));
         }
     }
 
@@ -916,6 +1022,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             if (_duplicateCount == value) return;
             _duplicateCount = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(InsightsSummary));
         }
     }
 
@@ -929,10 +1036,12 @@ public class MainWindowViewModel : INotifyPropertyChanged
             _queueCount = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(QueueSummary));
+            OnPropertyChanged(nameof(InsightsSummary));
         }
     }
 
     public string QueueSummary => QueueCount > 0 ? $"Queue: {QueueCount}" : string.Empty;
+    public string InsightsSummary => $"Viewed: {ViewedCount} | Duplicates: {DuplicateCount} | Queue: {QueueCount}";
 
     public ICommand OpenSettingsCommand { get; }
 
@@ -961,6 +1070,11 @@ public class MainWindowViewModel : INotifyPropertyChanged
     public ICommand ClearDownloadQueueCommand { get; }
     public ICommand CopyTagsFromSelectedCommand { get; }
     public ICommand ClearViewedHistoryCommand { get; }
+    public ICommand SyncFavoritesCommand { get; }
+    public ICommand ClearLocalFavoritesForSiteCommand { get; }
+    public ICommand ClearFavoriteTagFilterCommand { get; }
+    public ICommand ClearCollectionFilterCommand { get; }
+    public ICommand RefreshInsightsCommand { get; }
 
     public MainWindowViewModel()
     {
@@ -990,6 +1104,11 @@ public class MainWindowViewModel : INotifyPropertyChanged
         ClearDownloadQueueCommand = new AsyncRelayCommand(ClearDownloadQueueAsync);
         CopyTagsFromSelectedCommand = new AsyncRelayCommand(CopyTagsFromSelectedAsync);
         ClearViewedHistoryCommand = new AsyncRelayCommand(ClearViewedHistoryAsync);
+        SyncFavoritesCommand = new AsyncRelayCommand(SyncFavoritesFromAccountAsync);
+        ClearLocalFavoritesForSiteCommand = new AsyncRelayCommand(ClearLocalFavoritesForSelectedSiteAsync);
+        ClearFavoriteTagFilterCommand = new AsyncRelayCommand(ClearFavoriteTagFilterAsync);
+        ClearCollectionFilterCommand = new AsyncRelayCommand(ClearCollectionFilterAsync);
+        RefreshInsightsCommand = new AsyncRelayCommand(RefreshInsightsAsync);
 
         StartPreviewWorkers();
         _ = InitializeAsync();
@@ -1012,10 +1131,11 @@ public class MainWindowViewModel : INotifyPropertyChanged
     public async Task ToggleFavoriteAsync(ImagePost post)
     {
         var key = BuildFavoriteKey(post);
+        var isSyncedFavorite = _syncedFavoriteKeys.Contains(key);
         if (_favoriteKeys.Contains(key))
         {
             _favoriteKeys.Remove(key);
-            post.IsFavorite = false;
+            post.IsFavorite = isSyncedFavorite;
             RemoveFavoriteSnapshot(key);
         }
         else
@@ -1025,7 +1145,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             AddOrUpdateFavoriteSnapshot(post);
         }
 
-        UpdateLoadedFavoriteState(key, post.IsFavorite);
+        UpdateLoadedFavoriteState(key, _favoriteKeys.Contains(key) || isSyncedFavorite);
         NotifyFavoritesChanged();
 
         if (ShowFavoritesOnly)
@@ -1034,6 +1154,220 @@ public class MainWindowViewModel : INotifyPropertyChanged
         }
 
         await SaveSettingsAsync();
+    }
+
+    private async Task SyncFavoritesFromAccountAsync()
+    {
+        if (!IsFavoriteSyncSupported(SelectedSite))
+        {
+            StatusText = "Favorites sync is available for e621, Danbooru and Gelbooru";
+            return;
+        }
+
+        var targetUsername = SyncUsername.Trim();
+        if (string.IsNullOrWhiteSpace(targetUsername))
+        {
+            StatusText = "Insert a username to sync";
+            return;
+        }
+
+        IsSyncingFavorites = true;
+        try
+        {
+            _settings.CredentialsBySite.TryGetValue(SelectedSite, out var creds);
+
+            var syncedPostsByKey = new Dictionary<string, ImagePost>(StringComparer.OrdinalIgnoreCase);
+            const int maxPages = 20;
+            var queryCandidates = await BuildFavoriteSyncQueryCandidatesAsync(SelectedSite, targetUsername, creds);
+            var usedQuery = string.Empty;
+            foreach (var candidate in queryCandidates)
+            {
+                var foundForCandidate = false;
+                for (var page = 1; page <= maxPages; page++)
+                {
+                    var remotePosts = await _api.SearchAsync(
+                        SelectedSite,
+                        $"fav:{candidate}",
+                        page,
+                        SelectedPageSize,
+                        true,
+                        true,
+                        true,
+                        creds);
+
+                    if (remotePosts.Count == 0)
+                    {
+                        break;
+                    }
+
+                    var newOnPage = 0;
+                    foreach (var post in remotePosts)
+                    {
+                        var key = BuildFavoriteKey(post);
+                        if (syncedPostsByKey.ContainsKey(key))
+                        {
+                            continue;
+                        }
+
+                        post.IsFavorite = true;
+                        syncedPostsByKey[key] = post;
+                        newOnPage++;
+                    }
+
+                    if (newOnPage > 0)
+                    {
+                        foundForCandidate = true;
+                        usedQuery = candidate;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                if (foundForCandidate)
+                {
+                    break;
+                }
+            }
+            var syncedPosts = syncedPostsByKey.Values.ToList();
+
+            var profileKey = BuildSyncedOwnerKey(SelectedSite, targetUsername);
+            var localSiteCountBefore = _favoriteKeys.Count(key =>
+                TryParseFavoriteKey(key, out var site, out _) && site == SelectedSite);
+            var shouldRecoverLegacyLocal = localSiteCountBefore == 0 && _syncedFavoriteProfilesByKey.ContainsKey(profileKey);
+            var profile = new SyncedFavoriteProfile
+            {
+                Site = SelectedSite,
+                Username = targetUsername,
+                LastSyncUtc = DateTime.UtcNow,
+                FavoritePosts = syncedPosts
+                    .GroupBy(BuildFavoriteKey)
+                    .Select(g => g.First())
+                    .ToList()
+            };
+            _syncedFavoriteProfilesByKey[profileKey] = profile;
+            var restoredLegacyLocal = 0;
+            if (shouldRecoverLegacyLocal)
+            {
+                foreach (var post in profile.FavoritePosts)
+                {
+                    var key = BuildFavoriteKey(post);
+                    if (!_favoriteKeys.Add(key))
+                    {
+                        continue;
+                    }
+
+                    AddOrUpdateFavoriteSnapshot(CreateFavoriteSnapshot(post));
+                    restoredLegacyLocal++;
+                }
+            }
+
+            if (_selectedFavoriteOwnerKeys.Count == 0)
+            {
+                _selectedFavoriteOwnerKeys.Add(LocalFavoriteOwnerKey);
+            }
+
+            _selectedFavoriteOwnerKeys.Add(profileKey);
+            RebuildSyncedFavoriteKeyIndex();
+            RefreshLoadedFavoriteState();
+
+            _lastFavoritesSyncUtc = DateTime.UtcNow;
+            OnPropertyChanged(nameof(LastFavoritesSyncText));
+            NotifyFavoritesChanged();
+
+            if (profile.FavoritePosts.Count > 0)
+            {
+                _ = LoadPreviewsAsync(profile.FavoritePosts.Where(x => x.PreviewImage is null).ToList(), CancellationToken.None);
+            }
+
+            if (ShowFavoritesOnly)
+            {
+                ApplyVisibleFilter();
+            }
+
+            await SaveSettingsAsync();
+            var queryLabel = string.IsNullOrWhiteSpace(usedQuery) ? targetUsername : usedQuery;
+            StatusText = restoredLegacyLocal > 0
+                ? $"Synced {profile.FavoritePosts.Count} favorites from {targetUsername} ({SelectedSite}) using fav:{queryLabel}, restored {restoredLegacyLocal} local"
+                : $"Synced {profile.FavoritePosts.Count} favorites from {targetUsername} ({SelectedSite}) using fav:{queryLabel}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Favorites sync failed: {ex.Message}";
+        }
+        finally
+        {
+            IsSyncingFavorites = false;
+        }
+    }
+
+    private async Task<List<string>> BuildFavoriteSyncQueryCandidatesAsync(
+        BooruSite site,
+        string targetUsername,
+        BooruCredentials? credentials)
+    {
+        var candidates = new List<string>();
+        void AddCandidate(string value)
+        {
+            var normalized = (value ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return;
+            }
+
+            if (!candidates.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+            {
+                candidates.Add(normalized);
+            }
+        }
+
+        AddCandidate(targetUsername);
+        AddCandidate(targetUsername.Replace(' ', '_'));
+
+        if (site == BooruSite.Gelbooru)
+        {
+            AddCandidate(credentials?.Username ?? string.Empty);
+            AddCandidate((credentials?.Username ?? string.Empty).Replace(' ', '_'));
+
+            var targetUserId = await _api.ResolveGelbooruUserIdAsync(targetUsername);
+            AddCandidate(targetUserId ?? string.Empty);
+
+            var credentialUserId = await _api.ResolveGelbooruUserIdAsync(credentials?.Username ?? string.Empty);
+            AddCandidate(credentialUserId ?? string.Empty);
+        }
+
+        return candidates;
+    }
+
+    private async Task ClearLocalFavoritesForSelectedSiteAsync()
+    {
+        var keysToRemove = _favoriteKeys
+            .Where(key => TryParseFavoriteKey(key, out var site, out _) && site == SelectedSite)
+            .ToList();
+
+        if (keysToRemove.Count == 0)
+        {
+            StatusText = $"No local favorites to clear for {SelectedSite}";
+            return;
+        }
+
+        foreach (var key in keysToRemove)
+        {
+            _favoriteKeys.Remove(key);
+            RemoveFavoriteSnapshot(key);
+        }
+
+        RefreshLoadedFavoriteState();
+        NotifyFavoritesChanged();
+
+        if (ShowFavoritesOnly)
+        {
+            ApplyVisibleFilter();
+        }
+
+        await SaveSettingsAsync();
+        StatusText = $"Cleared {keysToRemove.Count} local favorites for {SelectedSite}";
     }
 
     public async Task EnsurePostMediaResolvedAsync(ImagePost post)
@@ -1176,6 +1510,15 @@ public class MainWindowViewModel : INotifyPropertyChanged
             _ = LoadPreviewsAsync(FavoriteImages.Where(x => x.PreviewImage is null).ToList(), CancellationToken.None);
         }
 
+        var syncedPreviewPosts = _syncedFavoriteProfilesByKey.Values
+            .SelectMany(x => x.FavoritePosts)
+            .Where(x => x.PreviewImage is null)
+            .ToList();
+        if (syncedPreviewPosts.Count > 0)
+        {
+            _ = LoadPreviewsAsync(syncedPreviewPosts, CancellationToken.None);
+        }
+
         _isInitialLoad = true;
         _hasStartedSearch = true;
         await RefreshAsync();
@@ -1194,7 +1537,15 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
         _favoriteKeys.Clear();
         _favoritePostsByKey.Clear();
+        _syncedFavoriteProfilesByKey.Clear();
+        _syncedFavoriteKeys.Clear();
+        _selectedFavoriteOwnerKeys.Clear();
         FavoriteImages.Clear();
+        VisibleFavoriteImages.Clear();
+        FilteredFavoriteImages.Clear();
+        FavoriteOwnerFilters.Clear();
+        FavoriteSourceFilters.Clear();
+        _selectedFavoriteSourceKeys.Clear();
 
         foreach (var key in _settings.FavoritePostKeys)
         {
@@ -1222,6 +1573,44 @@ public class MainWindowViewModel : INotifyPropertyChanged
             FavoriteImages.Add(favorite);
             _favoriteKeys.Add(favoriteKey);
         }
+
+        foreach (var profile in _settings.SyncedFavoriteProfiles)
+        {
+            if (string.IsNullOrWhiteSpace(profile.Username))
+            {
+                continue;
+            }
+
+            var profileKey = BuildSyncedOwnerKey(profile.Site, profile.Username);
+            profile.FavoritePosts ??= new List<ImagePost>();
+            foreach (var post in profile.FavoritePosts)
+            {
+                post.IsFavorite = true;
+            }
+
+            _syncedFavoriteProfilesByKey[profileKey] = profile;
+        }
+
+        foreach (var ownerKey in _settings.SelectedFavoriteOwnerKeys)
+        {
+            if (!string.IsNullOrWhiteSpace(ownerKey))
+            {
+                _selectedFavoriteOwnerKeys.Add(ownerKey.Trim().ToLowerInvariant());
+            }
+        }
+
+        foreach (var sourceKey in _settings.FavoriteSourceFilterKeys)
+        {
+            if (!string.IsNullOrWhiteSpace(sourceKey))
+            {
+                _selectedFavoriteSourceKeys.Add(sourceKey.Trim().ToLowerInvariant());
+            }
+        }
+        _favoriteTagFilterText = (_settings.FavoriteTagFilterText ?? string.Empty).Trim();
+        RebuildFavoriteTagFilterTokens();
+
+        RebuildSyncedFavoriteKeyIndex();
+        RefreshLoadedFavoriteState();
 
         _selectedPageSize = PageSizeOptions.Contains(_settings.ResultsPerPage)
             ? _settings.ResultsPerPage
@@ -1255,7 +1644,9 @@ public class MainWindowViewModel : INotifyPropertyChanged
         _thumbnailSize = Math.Clamp(_settings.ThumbnailSize, 50, 200);
         _showTagStatistics = _settings.ShowTagStatistics;
         _detectDuplicates = _settings.DetectDuplicates;
+        _showGridLines = _settings.ShowGridLines;
         _trackViewedPosts = _settings.TrackViewedPosts;
+        _lastFavoritesSyncUtc = _settings.LastFavoritesSyncUtc;
 
         Collections.Clear();
         _collectionsByKey.Clear();
@@ -1320,6 +1711,9 @@ public class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(MinimumHeight));
         OnPropertyChanged(nameof(RequiredTags));
         OnPropertyChanged(nameof(ExcludedTags));
+        OnPropertyChanged(nameof(FavoriteTagFilterText));
+        OnPropertyChanged(nameof(LastFavoritesSyncText));
+        RebuildFavoriteSourceFilters();
         NotifyFavoritesChanged();
     }
 
@@ -1357,6 +1751,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         if (_settings.CredentialsBySite.TryGetValue(SelectedSite, out var credentials))
         {
             Username = credentials.Username;
+            SyncUsername = credentials.Username;
             Secret = credentials.Secret;
             IsLoggedIn = !string.IsNullOrWhiteSpace(credentials.Username) && !string.IsNullOrWhiteSpace(credentials.Secret);
             StatusText = "Stored credentials loaded";
@@ -1402,8 +1797,10 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
         _settings.CredentialsBySite[SelectedSite] = credentials;
         IsLoggedIn = true;
+        SyncUsername = credentials.Username;
         StatusText = "Login saved";
         await SaveSettingsAsync();
+        await SyncFavoritesFromAccountAsync();
     }
 
     private async Task ClearHistoryAsync()
@@ -1916,10 +2313,10 @@ public class MainWindowViewModel : INotifyPropertyChanged
                     continue;
                 }
 
-                post.IsFavorite = _favoriteKeys.Contains(postKey);
+                post.IsFavorite = _favoriteKeys.Contains(postKey) || _syncedFavoriteKeys.Contains(postKey);
                 _allImages.Add(post);
                 addedPosts.Add(post);
-                if (post.IsFavorite)
+                if (_favoriteKeys.Contains(postKey))
                 {
                     AddOrUpdateFavoriteSnapshot(post);
                 }
@@ -2160,8 +2557,340 @@ public class MainWindowViewModel : INotifyPropertyChanged
         return true;
     }
 
+    private static bool IsFavoriteSyncSupported(BooruSite site)
+    {
+        return site is BooruSite.E621 or BooruSite.Danbooru or BooruSite.Gelbooru;
+    }
+
+    private static string BuildSyncedOwnerKey(BooruSite site, string username)
+    {
+        var normalizedUser = (username ?? string.Empty).Trim().ToLowerInvariant();
+        return $"{site.ToString().Trim().ToLowerInvariant()}::{normalizedUser}";
+    }
+
+    private static bool TryParseSyncedOwnerKey(string key, out BooruSite site, out string username)
+    {
+        site = BooruSite.Safebooru;
+        username = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return false;
+        }
+
+        var parts = key.Split("::", 2, StringSplitOptions.TrimEntries);
+        if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[1]))
+        {
+            return false;
+        }
+
+        if (!Enum.TryParse<BooruSite>(parts[0], true, out site))
+        {
+            return false;
+        }
+
+        username = parts[1];
+        return true;
+    }
+
+    private void RebuildSyncedFavoriteKeyIndex()
+    {
+        _syncedFavoriteKeys.Clear();
+        foreach (var profile in _syncedFavoriteProfilesByKey.Values)
+        {
+            foreach (var post in profile.FavoritePosts)
+            {
+                _syncedFavoriteKeys.Add(BuildFavoriteKey(post));
+            }
+        }
+    }
+
+    private void RefreshLoadedFavoriteState()
+    {
+        foreach (var loadedPost in _allImages)
+        {
+            var key = BuildFavoriteKey(loadedPost);
+            loadedPost.IsFavorite = _favoriteKeys.Contains(key) || _syncedFavoriteKeys.Contains(key);
+        }
+    }
+
+    private void RebuildFavoriteOwnerFilters()
+    {
+        var profiles = _syncedFavoriteProfilesByKey
+            .OrderBy(x => x.Value.Site.ToString(), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Value.Username, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var availableOwnerKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { LocalFavoriteOwnerKey };
+        foreach (var (key, _) in profiles)
+        {
+            availableOwnerKeys.Add(key);
+        }
+
+        _selectedFavoriteOwnerKeys.RemoveWhere(key => !availableOwnerKeys.Contains(key));
+        if (_selectedFavoriteOwnerKeys.Count == 0 && FavoriteOwnerFilters.Count == 0)
+        {
+            _selectedFavoriteOwnerKeys.Add(LocalFavoriteOwnerKey);
+            foreach (var (key, _) in profiles)
+            {
+                _selectedFavoriteOwnerKeys.Add(key);
+            }
+        }
+
+        FavoriteOwnerFilters.Clear();
+        FavoriteOwnerFilters.Add(new FavoriteOwnerFilterOption(
+            LocalFavoriteOwnerKey,
+            $"Local ({FavoriteImages.Count})",
+            _selectedFavoriteOwnerKeys.Contains(LocalFavoriteOwnerKey),
+            OnFavoriteOwnerFilterSelectionChanged));
+
+        foreach (var (profileKey, profile) in profiles)
+        {
+            FavoriteOwnerFilters.Add(new FavoriteOwnerFilterOption(
+                profileKey,
+                $"{profile.Username} @ {profile.Site} ({profile.FavoritePosts.Count})",
+                _selectedFavoriteOwnerKeys.Contains(profileKey),
+                OnFavoriteOwnerFilterSelectionChanged));
+        }
+    }
+
+    private void OnFavoriteOwnerFilterSelectionChanged(FavoriteOwnerFilterOption option, bool isSelected)
+    {
+        if (isSelected)
+        {
+            _selectedFavoriteOwnerKeys.Add(option.Key);
+        }
+        else
+        {
+            _selectedFavoriteOwnerKeys.Remove(option.Key);
+        }
+
+        RebuildFavoriteSourceFilters();
+        SaveSettingsInBackground();
+    }
+
+    private void RebuildFavoriteSourceFilters()
+    {
+        VisibleFavoriteImages.Clear();
+        var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var owner in FavoriteOwnerFilters.Where(x => x.IsSelected))
+        {
+            if (string.Equals(owner.Key, LocalFavoriteOwnerKey, StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var post in FavoriteImages)
+                {
+                    if (seenKeys.Add(BuildFavoriteKey(post)))
+                    {
+                        VisibleFavoriteImages.Add(post);
+                    }
+                }
+
+                continue;
+            }
+
+            if (!_syncedFavoriteProfilesByKey.TryGetValue(owner.Key, out var profile))
+            {
+                continue;
+            }
+
+            foreach (var post in profile.FavoritePosts)
+            {
+                if (seenKeys.Add(BuildFavoriteKey(post)))
+                {
+                    VisibleFavoriteImages.Add(post);
+                }
+            }
+        }
+
+        var grouped = VisibleFavoriteImages
+            .GroupBy(x => NormalizeFavoriteSourceKey(x.SourceSite))
+            .Select(g => new
+            {
+                Key = g.Key,
+                Label = GetFavoriteSourceDisplayName(g.Key),
+                Count = g.Count()
+            })
+            .OrderBy(x => x.Label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var availableKeys = grouped.Select(x => x.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _selectedFavoriteSourceKeys.RemoveWhere(key => !availableKeys.Contains(key));
+
+        if (_selectedFavoriteSourceKeys.Count == 0 && FavoriteSourceFilters.Count == 0 && grouped.Count > 0)
+        {
+            foreach (var group in grouped)
+            {
+                _selectedFavoriteSourceKeys.Add(group.Key);
+            }
+        }
+
+        FavoriteSourceFilters.Clear();
+        foreach (var group in grouped)
+        {
+            FavoriteSourceFilters.Add(new FavoriteSourceFilterOption(
+                group.Key,
+                group.Label,
+                group.Count,
+                _selectedFavoriteSourceKeys.Contains(group.Key),
+                OnFavoriteSourceFilterSelectionChanged));
+        }
+
+        ApplyFavoriteSourceFilter();
+        OnPropertyChanged(nameof(FavoritesTabTitle));
+    }
+
+    private void OnFavoriteSourceFilterSelectionChanged(FavoriteSourceFilterOption option, bool isSelected)
+    {
+        if (isSelected)
+        {
+            _selectedFavoriteSourceKeys.Add(option.Key);
+        }
+        else
+        {
+            _selectedFavoriteSourceKeys.Remove(option.Key);
+        }
+
+        ApplyFavoriteSourceFilter();
+        SaveSettingsInBackground();
+    }
+
+    private static (string[] include, string[] exclude) ParseFavoriteTagTokens(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return (Array.Empty<string>(), Array.Empty<string>());
+        }
+
+        var include = new HashSet<string>(StringComparer.Ordinal);
+        var exclude = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var raw in value.Split(new[] { ' ', ',', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var token = raw.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                continue;
+            }
+
+            if (token.StartsWith("-", StringComparison.Ordinal) && token.Length > 1)
+            {
+                exclude.Add(token[1..]);
+                continue;
+            }
+
+            if (token.StartsWith("+", StringComparison.Ordinal) && token.Length > 1)
+            {
+                include.Add(token[1..]);
+                continue;
+            }
+
+            include.Add(token);
+        }
+
+        return (include.ToArray(), exclude.ToArray());
+    }
+
+    private void RebuildFavoriteTagFilterTokens()
+    {
+        var parsed = ParseFavoriteTagTokens(_favoriteTagFilterText);
+        _favoriteTagIncludeTokens = parsed.include;
+        _favoriteTagExcludeTokens = parsed.exclude;
+    }
+
+    private bool MatchesFavoriteTagFilter(ImagePost post)
+    {
+        if (_favoriteTagIncludeTokens.Length == 0 && _favoriteTagExcludeTokens.Length == 0)
+        {
+            return true;
+        }
+
+        var normalizedTags = NormalizeTagsForFiltering(post.Tags);
+
+        foreach (var token in _favoriteTagIncludeTokens)
+        {
+            if (!normalizedTags.Contains($" {token} ", StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        foreach (var token in _favoriteTagExcludeTokens)
+        {
+            if (normalizedTags.Contains($" {token} ", StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void ApplyFavoriteSourceFilter()
+    {
+        FilteredFavoriteImages.Clear();
+        if (VisibleFavoriteImages.Count == 0)
+        {
+            return;
+        }
+
+        var activeKeys = FavoriteSourceFilters
+            .Where(x => x.IsSelected)
+            .Select(x => x.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (activeKeys.Count == 0)
+        {
+            OnPropertyChanged(nameof(FavoritesTabTitle));
+            return;
+        }
+
+        foreach (var post in VisibleFavoriteImages)
+        {
+            if (activeKeys.Contains(NormalizeFavoriteSourceKey(post.SourceSite))
+                && MatchesFavoriteTagFilter(post))
+            {
+                FilteredFavoriteImages.Add(post);
+            }
+        }
+
+        OnPropertyChanged(nameof(FavoritesTabTitle));
+    }
+
+    private async Task ClearFavoriteTagFilterAsync()
+    {
+        FavoriteTagFilterText = string.Empty;
+        await Task.CompletedTask;
+    }
+
+    private static string NormalizeFavoriteSourceKey(string sourceSite)
+    {
+        return string.IsNullOrWhiteSpace(sourceSite)
+            ? "unknown"
+            : sourceSite.Trim().ToLowerInvariant();
+    }
+
+    private static string GetFavoriteSourceDisplayName(string sourceKey)
+    {
+        return sourceKey switch
+        {
+            "safebooru" => "Safebooru",
+            "e621" => "e621",
+            "danbooru" => "Danbooru",
+            "gelbooru" => "Gelbooru",
+            "xbooru" => "XBooru",
+            "tabbooru" or "tab.booru.org" => "tab.booru.org",
+            "allgirlbooru" or "allgirl.booru.org" => "allgirl.booru.org",
+            "thecollectionbooru" or "the-collection.booru.org" => "the-collection.booru.org",
+            _ => sourceKey
+        };
+    }
+
     private void NotifyFavoritesChanged()
     {
+        RebuildSyncedFavoriteKeyIndex();
+        RebuildFavoriteOwnerFilters();
+        RebuildFavoriteSourceFilters();
+        OnPropertyChanged(nameof(SyncedFavoritesCount));
         OnPropertyChanged(nameof(FavoritesCount));
         OnPropertyChanged(nameof(FavoritesSummary));
         OnPropertyChanged(nameof(FavoritesTabTitle));
@@ -2226,6 +2955,11 @@ public class MainWindowViewModel : INotifyPropertyChanged
         _settings.RecentSearches = RecentSearches.ToList();
         _settings.FavoritePostKeys = _favoriteKeys.ToList();
         _settings.FavoritePosts = FavoriteImages.Select(CreateFavoriteSnapshot).ToList();
+        _settings.SyncedFavoriteProfiles = _syncedFavoriteProfilesByKey.Values.Select(CloneSyncedFavoriteProfile).ToList();
+        _settings.SelectedFavoriteOwnerKeys = _selectedFavoriteOwnerKeys.ToList();
+        _settings.FavoriteSourceFilterKeys = _selectedFavoriteSourceKeys.ToList();
+        _settings.FavoriteTagFilterText = FavoriteTagFilterText;
+        _settings.LastFavoritesSyncUtc = _lastFavoritesSyncUtc;
         _settings.ResultsPerPage = SelectedPageSize;
         _settings.SearchSortKey = SelectedSortOption.Key;
         _settings.ShowFavoritesOnly = ShowFavoritesOnly;
@@ -2254,6 +2988,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         _settings.ViewedPosts = _viewedPostKeys.Select(k => new ViewedPost { PostKey = k }).ToList();
         _settings.ThumbnailSize = ThumbnailSize;
         _settings.ShowTagStatistics = ShowTagStatistics;
+        _settings.ShowGridLines = ShowGridLines;
         _settings.DetectDuplicates = DetectDuplicates;
         _settings.TrackViewedPosts = TrackViewedPosts;
 
@@ -2285,6 +3020,17 @@ public class MainWindowViewModel : INotifyPropertyChanged
             Width = post.Width,
             Height = post.Height,
             IsFavorite = true
+        };
+    }
+
+    private static SyncedFavoriteProfile CloneSyncedFavoriteProfile(SyncedFavoriteProfile profile)
+    {
+        return new SyncedFavoriteProfile
+        {
+            Site = profile.Site,
+            Username = profile.Username,
+            LastSyncUtc = profile.LastSyncUtc,
+            FavoritePosts = profile.FavoritePosts.Select(CreateFavoriteSnapshot).ToList()
         };
     }
 
@@ -2571,7 +3317,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
     public void UpdateSelectedCount()
     {
-        var count = Images.Count(p => p.IsSelected) + FavoriteImages.Count(p => p.IsSelected);
+        var count = Images.Count(p => p.IsSelected) + FilteredFavoriteImages.Count(p => p.IsSelected);
         SelectedPostsCount = count;
     }
 
@@ -2580,7 +3326,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         var selected = new List<ImagePost>();
         var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var post in Images.Where(p => p.IsSelected).Concat(FavoriteImages.Where(p => p.IsSelected)))
+        foreach (var post in Images.Where(p => p.IsSelected).Concat(FilteredFavoriteImages.Where(p => p.IsSelected)))
         {
             var key = BuildFavoriteKey(post);
             if (seenKeys.Add(key))
@@ -2679,7 +3425,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             post.IsSelected = false;
         }
 
-        foreach (var post in FavoriteImages)
+        foreach (var post in FilteredFavoriteImages)
         {
             post.IsSelected = false;
         }
@@ -2787,7 +3533,9 @@ public class MainWindowViewModel : INotifyPropertyChanged
         bool confirmDownload,
         bool showNotifications,
         bool autoStartSlideshow,
-        string customUserAgent)
+        string customUserAgent,
+        bool showGridLines,
+        bool detectDuplicates)
     {
         if (!string.IsNullOrWhiteSpace(downloadFolder))
         {
@@ -2810,7 +3558,9 @@ public class MainWindowViewModel : INotifyPropertyChanged
         ShowDownloadNotifications = showNotifications;
         AutoStartSlideshow = autoStartSlideshow;
         CustomUserAgent = customUserAgent;
-
+        ShowGridLines = showGridLines;
+        DetectDuplicates = detectDuplicates;
+        
         _ = SaveSettingsAsync();
         StatusText = "Settings saved";
     }
@@ -2933,7 +3683,16 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
     private async Task CreateCollectionAsync()
     {
-        var name = $"Collection {Collections.Count + 1}";
+        var name = string.IsNullOrWhiteSpace(NewCollectionName)
+            ? $"Collection {Collections.Count + 1}"
+            : NewCollectionName.Trim();
+
+        if (Collections.Any(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            StatusText = $"Collection '{name}' already exists";
+            return;
+        }
+
         var collection = new PostCollection
         {
             Name = name,
@@ -2943,9 +3702,26 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
         _collectionsByKey[collection.Id] = collection;
         Collections.Add(collection);
+        NewCollectionName = string.Empty;
         _settings.Collections = Collections.ToList();
         await SaveSettingsAsync();
         StatusText = $"Created collection '{name}'";
+    }
+
+    private async Task ClearCollectionFilterAsync()
+    {
+        if (SelectedCollection is null)
+        {
+            ApplyVisibleFilter();
+            StatusText = $"Showing {Images.Count} posts";
+            await Task.CompletedTask;
+            return;
+        }
+
+        SelectedCollection = null;
+        ApplyVisibleFilter();
+        StatusText = $"Showing {Images.Count} posts";
+        await Task.CompletedTask;
     }
 
     private async Task AddSelectedToCollectionAsync()
@@ -3305,6 +4081,14 @@ public class MainWindowViewModel : INotifyPropertyChanged
         StatusText = $"Cleared {count} viewed posts from history";
     }
 
+    private async Task RefreshInsightsAsync()
+    {
+        UpdateTagStatistics();
+        DetectDuplicatePosts();
+        StatusText = $"Insights refreshed: {TagStatistics.Count} tags, {DuplicateCount} duplicates";
+        await Task.CompletedTask;
+    }
+
     public void UpdateTagStatistics()
     {
         if (!ShowTagStatistics) return;
@@ -3392,6 +4176,88 @@ public class AsyncRelayCommand : ICommand
     public async void Execute(object? parameter)
     {
         await _execute();
+    }
+}
+
+public class FavoriteSourceFilterOption : INotifyPropertyChanged
+{
+    private readonly Action<FavoriteSourceFilterOption, bool> _selectionChanged;
+    private bool _isSelected;
+
+    public FavoriteSourceFilterOption(
+        string key,
+        string label,
+        int count,
+        bool isSelected,
+        Action<FavoriteSourceFilterOption, bool> selectionChanged)
+    {
+        Key = key;
+        Label = label;
+        Count = count;
+        _isSelected = isSelected;
+        _selectionChanged = selectionChanged;
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string Key { get; }
+    public string Label { get; }
+    public int Count { get; }
+    public string DisplayText => $"{Label} ({Count})";
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value)
+            {
+                return;
+            }
+
+            _isSelected = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+            _selectionChanged(this, value);
+        }
+    }
+}
+
+public class FavoriteOwnerFilterOption : INotifyPropertyChanged
+{
+    private readonly Action<FavoriteOwnerFilterOption, bool> _selectionChanged;
+    private bool _isSelected;
+
+    public FavoriteOwnerFilterOption(
+        string key,
+        string label,
+        bool isSelected,
+        Action<FavoriteOwnerFilterOption, bool> selectionChanged)
+    {
+        Key = key;
+        Label = label;
+        _isSelected = isSelected;
+        _selectionChanged = selectionChanged;
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string Key { get; }
+    public string Label { get; }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value)
+            {
+                return;
+            }
+
+            _isSelected = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+            _selectionChanged(this, value);
+        }
     }
 }
 

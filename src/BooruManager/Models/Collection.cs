@@ -55,3 +55,11 @@ public class TagStatistic
     public int Count { get; set; }
     public double Percentage { get; set; }
 }
+
+public class SyncedFavoriteProfile
+{
+    public BooruSite Site { get; set; }
+    public string Username { get; set; } = string.Empty;
+    public DateTime? LastSyncUtc { get; set; }
+    public List<ImagePost> FavoritePosts { get; set; } = new();
+}
